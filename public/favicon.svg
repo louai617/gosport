@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="SportGo">
+  <defs>
+    <linearGradient id="sg-fav" x1="28.2" y1="5" x2="3.8" y2="27" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3b74ff"/>
+      <stop offset="1" stop-color="#2a5ee0"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="7" fill="#070b16"/>
+  <g fill="url(#sg-fav)">
+    <path d="M17.2 5H28.2L27.2 10H16.2Z"/>
+    <path d="M11 13.5H22L21 18.5H10Z"/>
+    <path d="M4.8 22H15.8L14.8 27H3.8Z"/>
+  </g>
+</svg>

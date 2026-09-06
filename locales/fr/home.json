@@ -1,0 +1,18 @@
+{
+  "home.hero.subtitle": "Cotes en direct, toutes les grandes compétitions et un panier de paris qui suit le rythme. Tout sur ce site est simulé.",
+  "home.hero.featured": "À la une",
+  "home.hero.versus": "vs",
+  "home.hero.allMarkets": "Les {count} marchés",
+  "home.live.title": "En direct",
+  "home.live.description": "Matchs en cours, avec des cotes qui évoluent avec le jeu.",
+  "home.live.emptyDescription": "Les matchs en direct apparaissent ici dès le coup d'envoi. En attendant, parcourez les rencontres du jour.",
+  "home.upcoming.title": "Prochains matchs",
+  "home.upcoming.description": "Les prochaines rencontres, tous sports confondus, regroupées par jour.",
+  "home.popular.title": "Compétitions populaires",
+  "home.popular.description": "Là où se concentre l'essentiel de l'action.",
+  "home.promotions.title": "Promotions",
+  "home.promotions.description": "Offres illustratives. Rien n'est utilisable dans cette version de démonstration.",
+  "home.responsible.title": "Gardez le contrôle",
+  "home.responsible.body": "Le pari doit rester un divertissement. Fixez une limite de dépôt, plafonnez la durée de vos sessions, faites une pause ou excluez-vous complètement — les outils sont ici, pas enfouis trois pages plus loin. Dans cette version de démonstration, ils ne modifient que des données simulées.",
+  "home.responsible.cta": "Outils de jeu responsable"
+}

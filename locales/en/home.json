@@ -1,0 +1,18 @@
+{
+  "home.hero.subtitle": "Live odds, every major competition, and a bet slip that keeps up with you. Everything on this site is simulated.",
+  "home.hero.featured": "Featured",
+  "home.hero.versus": "vs",
+  "home.hero.allMarkets": "All {count} markets",
+  "home.live.title": "Live now",
+  "home.live.description": "Matches in play, with prices that move as the game does.",
+  "home.live.emptyDescription": "Live matches appear here as soon as they kick off. Browse today's fixtures in the meantime.",
+  "home.upcoming.title": "Upcoming matches",
+  "home.upcoming.description": "The next fixtures across every sport, grouped by day.",
+  "home.popular.title": "Popular competitions",
+  "home.popular.description": "Where most of the action is right now.",
+  "home.promotions.title": "Promotions",
+  "home.promotions.description": "Illustrative offers. Nothing here is redeemable in this demonstration build.",
+  "home.responsible.title": "Stay in control",
+  "home.responsible.body": "Betting should stay entertainment. Set a deposit limit, cap your session length, take a break, or exclude yourself entirely — the controls are here, not buried three pages deep. In this demonstration build they change demo state only.",
+  "home.responsible.cta": "Responsible gambling tools"
+}
