@@ -26,11 +26,11 @@ import { cn } from "@/lib/cn";
 import { formatAmount } from "@/lib/format";
 import { round2 } from "@/lib/games/constants";
 import { useI18n } from "@/i18n/I18nProvider";
-import { useGameStore } from "@/store/gameStore";
+import { useCasinoWallet } from "./CasinoWalletProvider";
+import type { SlotsPlayResult } from "@/types/casino";
 import { Badge } from "@/components/ui/Badge";
 import { SlotSymbolIcon } from "./SlotSymbolIcon";
 import { StakePanel } from "./StakePanel";
-import { useGameRound } from "./useGameRound";
 
 const SPIN_MS = 520;
 const REEL_STAGGER_MS = 130;
@@ -70,8 +70,8 @@ function winningCells(result: SpinResult | null): Set<string> {
 
 export function SlotsBoard() {
   const { t, locale } = useI18n();
-  const { begin, draw, settle } = useGameRound();
-  const setBusy = useGameStore((state) => state.setBusy);
+  // Outcomes come from POST /api/casino/play; nothing here decides a result.
+  const { balance, ready, play } = useCasinoWallet();
 
   const [stake, setStake] = useState(1);
   // A fixed idle grid rather than an empty one: the machine should look like a
@@ -102,33 +102,26 @@ export function SlotsBoard() {
   const spinning = revealed < REEL_COUNT;
   const isFreeSpin = freeSpins > 0;
 
+  const [error, setError] = useState<string | null>(null);
+
   const spin = async () => {
     if (spinning) return;
 
-    // Free spins are already paid for; only a paid spin touches the balance.
-    let round = null;
-    if (!isFreeSpin) {
-      round = begin(stake);
-      if (!round) return;
-    } else {
-      const state = useGameStore.getState();
-      round = {
-        serverSeed: state.serverSeed,
-        serverSeedHash: state.serverSeedHash,
-        clientSeed: state.clientSeed,
-        nonce: useGameStore.getState().consumeNonce(),
-      };
-    }
-
-    setBusy(true);
+    clearTimers();
     setLastWin(null);
-    setResult(null);
 
-    const floats = await draw(round, REEL_COUNT);
-    const outcome = spinFromFloats(floats);
+    const response = await play<SlotsPlayResult>("slots", { stake });
+    if (!response.ok || !response.result) {
+      setError(response.errorKey ?? "error.generic");
+      return;
+    }
+    setError(null);
 
-    // The outcome is decided here, before a single reel moves. Everything below
-    // is presentation replaying a settled result.
+    // The server has already decided, charged and settled this spin — including
+    // whether it was a free one and what multiplier was actually paid. The
+    // reels only replay it.
+    const { spin: outcome, paidMultiplier, freeSpinsRemaining } = response.result;
+    setFreeSpins(freeSpinsRemaining);
     setResult(outcome);
     setRevealed(0);
     cycle.current = window.setInterval(() => setTick((value) => value + 1), CYCLE_MS);
@@ -143,29 +136,7 @@ export function SlotsBoard() {
       window.setTimeout(
         () => {
           clearTimers();
-
-          const multiplier = outcome.totalMultiplier * (isFreeSpin ? FREE_SPIN_MULTIPLIER : 1);
-          const payout = round2(stake * multiplier);
-          setLastWin(payout);
-
-          settle({
-            gameKey: "slots",
-            stake: isFreeSpin ? 0 : stake,
-            multiplier,
-            result: outcome.stops[0] ?? 0,
-            outcome: multiplier > 0 ? "won" : "lost",
-            round,
-          });
-
-          setFreeSpins((remaining) => {
-            const afterSpend = isFreeSpin ? remaining - 1 : remaining;
-            // Retriggers are not awarded during free spins — the published RTP
-            // is computed on that basis, so allowing them here would make the
-            // stated figure wrong.
-            return isFreeSpin ? afterSpend : afterSpend + outcome.freeSpinsAwarded;
-          });
-
-          setBusy(false);
+          setLastWin(round2(stake * paidMultiplier));
         },
         SPIN_MS + REEL_COUNT * REEL_STAGGER_MS + 60,
       ),
@@ -318,7 +289,8 @@ export function SlotsBoard() {
         stake={stake}
         onStakeChange={setStake}
         onBet={spin}
-        busy={spinning}
+        busy={spinning || !ready}
+        serverBalance={balance}
         betLabel={isFreeSpin ? t("games.slots.freeSpin") : t("games.slots.spin")}
         summary={[
           {

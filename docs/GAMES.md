@@ -199,6 +199,52 @@ Second, the remaining 10.07% is **printed in the game's own paytable panel**
 alongside RTP and hit frequency. A machine that hides how often its wins are
 losses is not being straight with the player.
 
+## 5b. Server-side settlement
+
+Four games — **slots, blackjack, roulette, plinko** — no longer decide anything
+in the browser. The client sends a wager and animates what comes back.
+
+```
+POST /api/casino/play      wager -> outcome + new balance
+POST /api/casino/action    blackjack hit / stand / double / split
+GET  /api/casino/session   opens the ledger, returns balance + CSRF token
+GET  /api/casino/history   settled rounds for this session
+```
+
+**Where the authority sits.** `src/server/casino/` owns the balance check, the
+randomness (`crypto.randomBytes`, not `Math.random()`), the payout and the
+ledger write. The game *maths* is reused from `src/lib/games/*`, which is pure
+— the client imports the same modules only to render a result the server has
+already committed to.
+
+**Idempotency.** Every write carries a client-generated key. A retry returns
+the original response rather than rolling again, so a timeout cannot be used to
+re-roll a losing spin. Settlement additionally refuses a round that is not
+`OPEN`, which is what stops a finished blackjack hand being replayed for a
+second payout.
+
+**What the client is not sent.** The blackjack shoe never crosses the wire, and
+the hole card is withheld until the dealer's turn — with either, the game is
+solvable.
+
+**Free spins are server state.** The slot's free-spin counter and the stake it
+was won at live in the ledger. A client-held counter could be edited for
+unlimited doubled spins, and the published 96.74% RTP counts free spins as
+23.51 of its points — so getting this wrong would make the stated figure false.
+
+**Storage is the demo-grade part.** The ledger is a process-local `Map`. That
+is the one thing a real deployment must replace, and the seam is narrow: every
+function in `store.ts` maps to one Prisma call against the `Wallet`,
+`Transaction` and `Bet` models that already exist. Balances reset on restart
+and are not shared across instances. What it does *not* mean is that the client
+is trusted — the balance, the RNG and the settlement are all server-side, which
+is the property that matters.
+
+`npm run casino:test` exercises the ledger end to end: balance reconciliation
+over twelve spins, retry-does-not-pay-twice, over-stake and negative-stake
+refusal, roulette payouts against the paytable, and a settled hand refusing
+further action.
+
 ## 6. Responsible gambling
 
 Casino games are not sports betting with different artwork, and the product

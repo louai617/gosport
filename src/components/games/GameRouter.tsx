@@ -1,11 +1,13 @@
 "use client";
 
 import type { GameKey } from "@/types/games";
+import { BlackjackBoard } from "./BlackjackBoard";
 import { CrashBoard } from "./CrashBoard";
 import { DiceBoard } from "./DiceBoard";
 import { LimboBoard } from "./LimboBoard";
 import { MinesBoard } from "./MinesBoard";
 import { PlinkoBoard } from "./PlinkoBoard";
+import { RouletteBoard } from "./RouletteBoard";
 import { SlotsBoard } from "./SlotsBoard";
 
 /**
@@ -21,6 +23,8 @@ const BOARDS: Partial<Record<GameKey, () => React.ReactElement>> = {
   mines: MinesBoard,
   plinko: PlinkoBoard,
   slots: SlotsBoard,
+  blackjack: BlackjackBoard,
+  roulette: RouletteBoard,
 };
 
 export function GameRouter({ gameKey }: { gameKey: GameKey }) {

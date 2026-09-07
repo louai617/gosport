@@ -8,6 +8,7 @@ import { useT } from "@/i18n/I18nProvider";
 import { Alert } from "@/components/ui/Alert";
 import { SimulatedBadge } from "@/components/ui/SimulatedBadge";
 import { FairnessPanel } from "./FairnessPanel";
+import { ServerFairnessNote } from "./ServerFairnessNote";
 import { RoundHistory } from "./RoundHistory";
 
 export interface GameShellProps {
@@ -77,7 +78,10 @@ export function GameShell({ game, children, className }: GameShellProps) {
       <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
         {children}
         <RoundHistory gameKey={game.key} />
-        <FairnessPanel />
+        {/* Only for games that actually are. Blackjack and roulette resolve on
+            the server from a CSPRNG with no player-visible commitment, so
+            showing a fairness panel there would claim a property they lack. */}
+        {game.provablyFair ? <FairnessPanel /> : <ServerFairnessNote />}
       </div>
     </div>
   );

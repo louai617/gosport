@@ -14,6 +14,8 @@
 /** In-house originals. A provider game has no key — the studio owns its math. */
 export type GameKey =
   | "slots"
+  | "blackjack"
+  | "roulette"
   | "dice"
   | "limbo"
   | "crash"

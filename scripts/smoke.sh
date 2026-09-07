@@ -9,7 +9,7 @@ ROUTES=(
   / /sports /sports/football /sports/basketball /sports/tennis /sports/handball
   /sports/volleyball /sports/rugby /sports/boxing /sports/formula1
   /live /results /search "/search?q=esperance" /popular
-  /games /games/reels /games/crash /games/dice /games/mines /games/plinko /games/limbo /games/fairness
+  /games /games/reels /games/roulette /games/blackjack /games/crash /games/dice /games/mines /games/plinko /games/limbo /games/fairness
   /promotions /responsible-gambling
   /about /help /contact /legal/terms /legal/privacy /legal/cookies
   /login /register /forgot-password
@@ -22,6 +22,7 @@ ROUTES=(
   /api/sports /api/competitions /api/events /api/odds /api/results
   "/api/search?q=esperance" /api/wallet /api/account /api/bets /api/transactions
   /api/games /api/games/providers /api/games/crash /api/games/slots-video
+  /api/casino/session /api/casino/history
   /this-route-does-not-exist
 )
 

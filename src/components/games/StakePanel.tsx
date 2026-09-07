@@ -24,6 +24,11 @@ export interface StakePanelProps {
   busy?: boolean;
   /** Replaces the bet button entirely — Crash swaps in "Cash out". */
   action?: React.ReactNode;
+  /**
+   * Server-returned balance. Supplied by games settled on the server, so the
+   * panel shows the ledger's figure rather than the local session store.
+   */
+  serverBalance?: number | null;
 }
 
 const MULTIPLIERS = [0.5, 2] as const;
@@ -38,11 +43,13 @@ export function StakePanel({
   disabled = false,
   busy = false,
   action,
+  serverBalance,
 }: StakePanelProps) {
   const { t, locale } = useI18n();
   const hydrated = useHydrated();
   const ready = useCasinoReady();
-  const balance = useGameStore((state) => state.balance);
+  const localBalance = useGameStore((state) => state.balance);
+  const balance = serverBalance ?? localBalance;
 
   const clamp = (value: number) =>
     round2(Math.min(GAME_STAKE.max, Math.max(0, value)));

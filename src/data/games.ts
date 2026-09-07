@@ -98,6 +98,25 @@ export const GAMES: CasinoGame[] = [
     houseEdge: 1 - SLOT_RTP,
     maxMultiplier: 98,
   }),
+  // European single-zero: the 37th pocket is the entire 2.70% edge.
+  original("roulette", "roulette", 2, 975, {
+    category: "table_games",
+    featured: true,
+    rtp: 36 / 37,
+    houseEdge: 1 / 37,
+    maxMultiplier: 36,
+    provablyFair: false,
+  }),
+  // Four-deck shoe, dealer stands on soft 17, blackjack pays 3:2. The return
+  // depends on how the hand is played, so no single RTP is quoted.
+  original("blackjack", "blackjack", 140, 970, {
+    category: "table_games",
+    featured: true,
+    rtp: null,
+    houseEdge: null,
+    maxMultiplier: 3,
+    provablyFair: false,
+  }),
   original("crash", "crash", 8, 980, { featured: true }),
   original("dice", "dice", 224, 940, { featured: true }),
   original("mines", "mines", 152, 910, { featured: true }),
@@ -110,8 +129,6 @@ export const GAMES: CasinoGame[] = [
   original("hilo", "hilo", 320, 500, { status: "coming_soon" }),
 
   /* ----------------------------------------------------- provider content -- */
-  providerGame("roulette", "Roulette", "provider-table", "table_games", 2, 760),
-  providerGame("blackjack", "Blackjack", "provider-table", "table_games", 140, 720),
   providerGame("baccarat", "Baccarat", "provider-table", "table_games", 30, 640),
   providerGame("video-poker", "Video poker", "provider-table", "table_games", 258, 480),
 

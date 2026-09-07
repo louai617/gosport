@@ -5,12 +5,11 @@ import type { PlinkoRisk } from "@/types/games";
 import { cn } from "@/lib/cn";
 import { formatAmount } from "@/lib/format";
 import { round2 } from "@/lib/games/constants";
-import { PLINKO_ROWS, buildPlinkoTable, dropPlinko } from "@/lib/games/plinko";
+import { PLINKO_ROWS, buildPlinkoTable, type PlinkoDrop } from "@/lib/games/plinko";
 import { useI18n } from "@/i18n/I18nProvider";
-import { useGameStore } from "@/store/gameStore";
+import { useCasinoWallet } from "./CasinoWalletProvider";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { StakePanel } from "./StakePanel";
-import { useGameRound } from "./useGameRound";
 
 const STEP_MS = 90;
 
@@ -23,8 +22,8 @@ const STEP_MS = 90;
  */
 export function PlinkoBoard() {
   const { t, locale } = useI18n();
-  const { begin, draw, settle } = useGameRound();
-  const setBusy = useGameStore((state) => state.setBusy);
+  const { balance, ready, play } = useCasinoWallet();
+  const [error, setError] = useState<string | null>(null);
 
   const [stake, setStake] = useState(1);
   const [rows, setRows] = useState<number>(12);
@@ -38,7 +37,7 @@ export function PlinkoBoard() {
   const table = useMemo(() => buildPlinkoTable(rows, risk), [rows, risk]);
 
   const animate = useCallback(
-    (dropped: ReturnType<typeof dropPlinko>, onDone: () => void) => {
+    (dropped: PlinkoDrop, onDone: () => void) => {
       let index = 0;
       setStep(0);
 
@@ -58,29 +57,21 @@ export function PlinkoBoard() {
     [],
   );
 
-  const play = async () => {
-    const round = begin(stake);
-    if (!round) return;
-
-    setBusy(true);
+  const drop = async () => {
     setLanded(null);
     if (timerRef.current) window.clearTimeout(timerRef.current);
 
-    const floats = await draw(round, rows);
-    const dropped = dropPlinko(floats, rows, risk);
-    setPath(dropped.path);
+    const response = await play<PlinkoDrop>("plinko", { stake, rows, risk });
+    if (!response.ok || !response.result) {
+      setError(response.errorKey ?? "error.generic");
+      return;
+    }
+    setError(null);
 
-    animate(dropped, () => {
-      settle({
-        gameKey: "plinko",
-        stake,
-        multiplier: dropped.multiplier,
-        result: dropped.bucket,
-        outcome: dropped.multiplier >= 1 ? "won" : "lost",
-        round,
-      });
-      setBusy(false);
-    });
+    // The bucket is already settled server-side; the ball is only catching up.
+    const dropped = response.result;
+    setPath(dropped.path);
+    animate(dropped, () => undefined);
   };
 
   // Position of the ball after `step` deflections, as a 0-1 fraction across
@@ -157,8 +148,10 @@ export function PlinkoBoard() {
       <StakePanel
         stake={stake}
         onStakeChange={setStake}
-        onBet={play}
+        onBet={drop}
         betLabel={t("games.plinko.drop")}
+        busy={!ready}
+        serverBalance={balance}
         summary={[
           { label: t("games.plinko.maxWin"), value: `${maxMultiplier}×` },
           {

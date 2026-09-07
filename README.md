@@ -57,6 +57,14 @@ Next.js 16 (App Router, RSC-first) · React 19 · TypeScript strict ·
 Tailwind CSS v4 (CSS-first `@theme`) · zustand · zod · Prisma + PostgreSQL
 (schema only) · lucide-react.
 
+## Third-party code
+
+Blackjack and roulette *rules* are adapted from
+[casino-by-ai](https://github.com/Lemelson/casino-by-ai) by Lemelson (MIT).
+The notice and a precise account of what was and was not taken are in
+[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md). Everything else —
+including slots and plinko — is original to this repository.
+
 ## Documentation
 
 | | |

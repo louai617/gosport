@@ -11,6 +11,8 @@ import type { GameKey } from "@/types/games";
  */
 export const IMPLEMENTED_GAMES: readonly GameKey[] = [
   "slots",
+  "blackjack",
+  "roulette",
   "crash",
   "dice",
   "limbo",

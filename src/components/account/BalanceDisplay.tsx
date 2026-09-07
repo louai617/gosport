@@ -6,6 +6,7 @@ import { Eye, EyeOff, Wallet } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { formatAmount } from "@/lib/format";
 import { useI18n } from "@/i18n/I18nProvider";
+import { useCasinoBalance } from "@/components/games/CasinoWalletProvider";
 
 const HIDDEN_KEY = "sportgo.balance.hidden";
 const MASK = "••••••";
@@ -32,12 +33,16 @@ export interface BalanceDisplayProps {
  * localStorage — deliberately not in the wallet, which is server data.
  */
 export function BalanceDisplay({
-  balance,
+  balance: serverBalance,
   variant = "bar",
   href = "/wallet",
   className,
 }: BalanceDisplayProps) {
   const { t, locale } = useI18n();
+  // The server ledger wins once it has answered; the prop is the SSR value
+  // that keeps the first paint from being empty.
+  const liveBalance = useCasinoBalance();
+  const balance = liveBalance ?? serverBalance;
   const [hidden, setHidden] = useState(false);
 
   // Read after mount: the server cannot know this, and using it in the first
