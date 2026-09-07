@@ -13,6 +13,7 @@
 
 /** In-house originals. A provider game has no key — the studio owns its math. */
 export type GameKey =
+  | "slots"
   | "dice"
   | "limbo"
   | "crash"

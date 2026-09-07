@@ -1,6 +1,7 @@
 import type { CasinoGame } from "@/types/games";
 import { GAME_STAKE, MAX_MULTIPLIER } from "@/lib/games/constants";
 import { buildPlinkoTable } from "@/lib/games/plinko";
+import { SLOT_RTP } from "@/lib/games/slots";
 
 /**
  * Game catalogue.
@@ -88,6 +89,15 @@ function providerGame(
 
 export const GAMES: CasinoGame[] = [
   /* ------------------------------------------------------- playable now -- */
+  // Filed under slots rather than originals: it *is* a slot, and it is the one
+  // playable entry in a category where every other title needs a provider.
+  original("reels", "slots", 286, 990, {
+    category: "slots",
+    featured: true,
+    rtp: SLOT_RTP,
+    houseEdge: 1 - SLOT_RTP,
+    maxMultiplier: 98,
+  }),
   original("crash", "crash", 8, 980, { featured: true }),
   original("dice", "dice", 224, 940, { featured: true }),
   original("mines", "mines", 152, 910, { featured: true }),

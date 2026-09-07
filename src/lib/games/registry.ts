@@ -10,6 +10,7 @@ import type { GameKey } from "@/types/games";
  * shared helpers out of client component files.
  */
 export const IMPLEMENTED_GAMES: readonly GameKey[] = [
+  "slots",
   "crash",
   "dice",
   "limbo",

@@ -6,6 +6,7 @@ import { DiceBoard } from "./DiceBoard";
 import { LimboBoard } from "./LimboBoard";
 import { MinesBoard } from "./MinesBoard";
 import { PlinkoBoard } from "./PlinkoBoard";
+import { SlotsBoard } from "./SlotsBoard";
 
 /**
  * Maps a catalogue key to its board.
@@ -19,6 +20,7 @@ const BOARDS: Partial<Record<GameKey, () => React.ReactElement>> = {
   limbo: LimboBoard,
   mines: MinesBoard,
   plinko: PlinkoBoard,
+  slots: SlotsBoard,
 };
 
 export function GameRouter({ gameKey }: { gameKey: GameKey }) {

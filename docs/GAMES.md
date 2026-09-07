@@ -39,6 +39,19 @@ public API, and the gate is commercial and regulatory before it is technical:
    names — commonly GLI-19 for RNG games and GLI-33 for live dealer.
 5. **Production credentials issued to the licensed entity**, after the above.
 
+This was checked again rather than assumed. Every aggregator that markets an
+"API" — SOFTSWISS, Hub88, BGaming, GameTrax, SoftAggregator, Slotegrator — puts
+the same gate in front of it: an onboarding call, then credentials. Hub88's
+developer docs do document a demo mode (`"currency":"XXX"`), but that is demo
+*inside* an integration you have already been onboarded to, not open access.
+There is no self-serve tier and no public sandbox.
+
+Open-source HTML5 slot engines do exist on GitHub under MIT, and were
+considered. They are toys — a spin animation over `Math.random()`, with no reel
+strips, no paytable and no RTP model — so importing one would add a licence
+obligation and third-party code while providing none of the parts that make a
+slot a slot. Building the maths was both cheaper and better.
+
 No amount of code produces any of that, and nothing here should imply
 otherwise. `getGameProvider()` therefore returns an adapter that refuses, and
 throws loudly if `GAME_PROVIDER` is set to anything else — a misconfigured name
@@ -142,6 +155,49 @@ re-derives it.
 
 Crash's rising curve is `e^{0.18·t}`: the bust point is drawn once, up front,
 from the committed seed. The animation is presentation and cannot move it.
+
+## 5a. SportGo Reels — the slot
+
+Five reels, three rows, ten fixed paylines. Built here because it could not be
+imported; the maths is the real thing rather than a spin animation.
+
+**Odds come from reel strips.** Each reel is a circular 24-position strip and a
+spin picks a stop; the window shows three *consecutive* symbols. Drawing three
+independent symbols per reel would be a different distribution — adjacency on
+the strip is what makes stacked symbols and near-misses behave correctly, and
+it is how a physical machine works.
+
+**The RTP is enumerated, not estimated.** 24⁵ = 7 962 624 stop combinations are
+evaluated exactly by `scripts/slot-rtp.ts`, which imports the *shipping* engine
+under Node's type stripping — a verifier that reimplements the algorithm
+verifies nothing. That is also why `src/lib/games/slots.ts` has no imports.
+
+```
+base game      73.23%
+free spins     23.51%   (trigger 1 in 62 spins)
+TOTAL          96.74%   → house edge 3.26%
+
+hit frequency  30.40%
+largest win    97.90x the total bet
+```
+
+Free spins are folded in analytically — `P(trigger) × spins × baseReturn × 2` —
+and retriggers are not awarded, which keeps that term exact and the published
+figure honest.
+
+### The number slots do not show you
+
+10.07% of all spins "win" but return **less than the stake**. The reels
+celebrate, the balance goes down. That is the industry's *loss disguised as a
+win*, and it is a documented driver of continued play.
+
+Two things follow from it here. First, the paytable was designed against it:
+three-of-a-kind on the two lowest symbols pays nothing, and the return was moved
+into higher tiers. That cut sub-stake "wins" from 25.5% to 10.1% and hit
+frequency from 47% to 30% at the same RTP — fewer, more meaningful wins.
+Second, the remaining 10.07% is **printed in the game's own paytable panel**
+alongside RTP and hit frequency. A machine that hides how often its wins are
+losses is not being straight with the player.
 
 ## 6. Responsible gambling
 
