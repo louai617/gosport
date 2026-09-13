@@ -288,8 +288,10 @@ export function RouletteBoard() {
             {t("ui.clearAll")}
           </Button>
           <Button
-            fullWidth
             size="lg"
+            // Grows into the space the clear button leaves rather than claiming
+            // the whole row — `w-full` beside a sibling overflowed the panel.
+            className="min-w-0 flex-1 shrink"
             loading={spinning || !ready}
             disabled={disabled || total <= 0}
             onClick={spin}

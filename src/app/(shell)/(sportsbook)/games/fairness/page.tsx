@@ -14,7 +14,7 @@ export default async function FairnessPage() {
   const t = await getT();
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
+    <div className="max-w-3xl">
       <header>
         <h1 className="text-display text-ink">{t("games.verify.title")}</h1>
         <p className="mt-2 text-body leading-relaxed text-ink-muted">

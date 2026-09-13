@@ -8,13 +8,15 @@ import { CompetitionSection } from "./CompetitionSection";
 
 export interface SportBoardProps {
   blocks: CompetitionWithEvents[];
+  /** How many competitions start expanded. */
+  defaultOpenCount?: number;
 }
 
 /**
  * The fixture board. Only the first few competitions open by default — a page
  * that renders two hundred expanded rows is slower to scan, not richer.
  */
-export function SportBoard({ blocks }: SportBoardProps) {
+export function SportBoard({ blocks, defaultOpenCount = 4 }: SportBoardProps) {
   const t = useT();
 
   if (blocks.length === 0) {
@@ -35,7 +37,7 @@ export function SportBoard({ blocks }: SportBoardProps) {
         <CompetitionSection
           key={block.competition.id}
           block={block}
-          defaultOpen={index < 4}
+          defaultOpen={index < defaultOpenCount}
         />
       ))}
     </div>

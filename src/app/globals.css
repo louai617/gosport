@@ -7,59 +7,63 @@
    Everything in the product reads from these tokens; components never
    hard-code hex values.
 
-   Direction: premium dark sportsbook. Deep navy grounds, one confident blue
-   accent, restrained semantic colours, soft elevation, minimal glass.
+   Direction: premium dark sportsbook. Near-black neutral grounds, one
+   confident yellow, restrained semantic colours, soft elevation, minimal
+   glass. Yellow is the brand and the call to action — nothing else on the
+   screen is allowed to look like it, which is why warnings are orange.
    ========================================================================== */
 
 @theme {
   /* ---------------------------------------------------------------- colour */
-  /* Ground — deep navy, near-black but never neutral grey. */
-  --color-canvas: #070b16;          /* page background            */
-  --color-canvas-soft: #0a1020;     /* alternating band           */
-  --color-surface: #0e1527;         /* card background            */
-  --color-surface-2: #141d33;       /* nested / hovered card      */
-  --color-surface-3: #1b2643;       /* pressed / selected         */
-  --color-overlay: #060a14;         /* modal scrim base           */
+  /* Ground — true near-black, neutral rather than tinted, so the yellow is the
+     only colour carrying temperature. Each step up is a small lift in value. */
+  --color-canvas: #070707;          /* page background            */
+  --color-canvas-soft: #0c0c0c;     /* alternating band           */
+  --color-surface: #111111;         /* card background            */
+  --color-surface-2: #181818;       /* nested / hovered card      */
+  --color-surface-3: #222222;       /* pressed / selected         */
+  --color-overlay: #000000;         /* modal scrim base           */
 
   /* Lines */
-  --color-line: #1e2a45;            /* default hairline           */
-  --color-line-soft: #172037;       /* very subtle divider        */
-  --color-line-strong: #2c3b5e;     /* emphasised / focus ring bg */
+  --color-line: #262626;            /* default hairline           */
+  --color-line-soft: #1c1c1c;       /* very subtle divider        */
+  --color-line-strong: #3a3a3a;     /* emphasised / focus ring bg */
 
-  /* Type */
-  --color-ink: #f4f7fc;             /* primary text               */
-  --color-ink-muted: #9aabc9;       /* secondary text             */
-  --color-ink-subtle: #6b7c9c;      /* tertiary / captions        */
-  --color-ink-inverse: #060a14;     /* text on primary fills      */
+  /* Type — a warm white, so text sits with the yellow instead of against it. */
+  --color-ink: #f5f5f4;             /* primary text               */
+  --color-ink-muted: #a8a8a8;       /* secondary text             */
+  --color-ink-subtle: #828282;      /* tertiary / captions        */
+  --color-ink-inverse: #0a0a0a;     /* text on primary fills      */
 
-  /* Brand — one blue, used deliberately. */
-  --color-primary: #3b74ff;
-  --color-primary-hover: #5286ff;
-  --color-primary-active: #2a5ee0;
-  --color-primary-soft: #16224a;    /* tinted background          */
-  --color-primary-ring: #3b74ff66;
+  /* Brand — one yellow, used deliberately. Black text on it clears 12:1. */
+  --color-primary: #f5c518;
+  --color-primary-hover: #ffd43b;
+  --color-primary-active: #d9ab08;
+  --color-primary-soft: #2a2205;    /* tinted background          */
+  --color-primary-ring: #f5c51866;
 
-  /* Accent — cool cyan, used only for live / motion cues. */
-  --color-accent: #35d0d8;
-  --color-accent-soft: #0d2a2f;
+  /* Accent — a deeper amber, a companion to the yellow for glows and motion. */
+  --color-accent: #e8a317;
+  --color-accent-soft: #2a1d07;
 
-  /* Semantic — restrained, never garish. */
+  /* Semantic — restrained, never garish. Warning is orange, not amber: an
+     amber warning beside a yellow brand reads as a button. */
   --color-success: #2fbf71;
-  --color-success-soft: #0d2a1e;
-  --color-warning: #e0a339;
-  --color-warning-soft: #2c2113;
-  --color-danger: #e2565c;
-  --color-danger-soft: #2e1519;
-  --color-info: #4d8dff;
-  --color-info-soft: #12203f;
+  --color-success-soft: #0d2217;
+  --color-warning: #ff8a3d;
+  --color-warning-soft: #2a1508;
+  --color-danger: #e5484d;
+  --color-danger-soft: #2b1012;
+  --color-info: #5b9dff;
+  --color-info-soft: #0f1a2c;
 
   /* Live pulse */
   --color-live: #ff4d5e;
-  --color-live-soft: #2d1219;
+  --color-live-soft: #2b0f14;
 
   /* Odds movement */
   --color-odds-up: #2fbf71;
-  --color-odds-down: #e2565c;
+  --color-odds-down: #e5484d;
 
   /* ------------------------------------------------------------ typography */
   --font-sans: var(--font-inter), "Inter", ui-sans-serif, system-ui,
@@ -109,10 +113,10 @@
   --radius-2xl: 20px;
 
   /* ---------------------------------------------------------- elevation */
-  --shadow-e1: 0 1px 2px 0 rgb(2 6 18 / 0.4);
-  --shadow-e2: 0 2px 8px -2px rgb(2 6 18 / 0.55), 0 1px 2px rgb(2 6 18 / 0.4);
-  --shadow-e3: 0 12px 28px -12px rgb(2 6 18 / 0.7), 0 2px 6px rgb(2 6 18 / 0.45);
-  --shadow-e4: 0 24px 60px -24px rgb(2 6 18 / 0.8), 0 4px 12px rgb(2 6 18 / 0.5);
+  --shadow-e1: 0 1px 2px 0 rgb(0 0 0 / 0.5);
+  --shadow-e2: 0 2px 8px -2px rgb(0 0 0 / 0.65), 0 1px 2px rgb(0 0 0 / 0.5);
+  --shadow-e3: 0 12px 28px -12px rgb(0 0 0 / 0.8), 0 2px 6px rgb(0 0 0 / 0.55);
+  --shadow-e4: 0 24px 60px -24px rgb(0 0 0 / 0.9), 0 4px 12px rgb(0 0 0 / 0.6);
   --shadow-focus: 0 0 0 2px var(--color-canvas), 0 0 0 4px var(--color-primary);
 
   /* ------------------------------------------------------------- motion */
@@ -248,21 +252,23 @@
    Not an inversion. Dark SportGo leans on luminance for hierarchy — surfaces
    sit *above* the ground by being lighter. On a light ground that reverses:
    the card is the brightest thing (white) and the page recedes behind it in a
-   cool blue-gray, with hierarchy carried by hairlines and soft shadows instead.
+   warm stone gray, with hierarchy carried by hairlines and soft shadows.
    Only the tokens change; no component knows which theme it is in.
 
-   The blue also has to move. `#3b74ff` reads well on navy but gives ~3.4:1 on
-   white, which fails for text. Light mode uses a deeper blue that clears 4.5:1
-   both as text on white and as white text on the fill.
+   The yellow has to move. `#f5c518` is 12:1 on black but ~1.6:1 on white, so
+   as text it disappears. Light mode uses a deep gold that clears 4.5:1 both as
+   text on white (5.4:1) and as white text on the fill — the same family, at a
+   value that can still be read.
    ========================================================================== */
 
 @layer base {
   :root {
     /* Hairline highlight along the top of raised surfaces. */
-    --edge-highlight: color-mix(in oklab, #ffffff 8%, transparent);
-    /* How strongly the hero gradient tints its surface. */
-    --hero-tint-primary: 22%;
-    --hero-tint-accent: 12%;
+    --edge-highlight: color-mix(in oklab, #ffffff 7%, transparent);
+    /* How strongly the hero gradient tints its surface. Yellow carries far more
+       luminance than the old blue, so it needs less to read as a glow. */
+    --hero-tint-primary: 14%;
+    --hero-tint-accent: 8%;
   }
 
   html[data-theme="light"] {
@@ -271,45 +277,45 @@
     /* ---- ground and surfaces ---- */
     /* The ramp inverts direction, not just value. On dark, a raised surface is
        lighter than the ground; on light it is *whiter*, and the ground sits
-       behind it in blue-gray. `surface-2` doubles as the input field — it has
+       behind it in warm gray. `surface-2` doubles as the input field — it has
        to stay near-white so a form on the canvas still reads as a field, while
        remaining a perceptible hover against a white card. */
-    --color-canvas: #f1f5fb;
-    --color-canvas-soft: #e8eef8;
+    --color-canvas: #f4f4f2;
+    --color-canvas-soft: #ebebe8;
     --color-surface: #ffffff;
-    --color-surface-2: #f8fafe;
-    --color-surface-3: #e9eff9;
+    --color-surface-2: #fafaf8;
+    --color-surface-3: #efeeea;
     /* Scrims stay dark in both themes: a light scrim does not read as one. */
-    --color-overlay: #0a1020;
+    --color-overlay: #0a0a0a;
 
     /* ---- lines ---- */
-    --color-line: #d7dfee;
-    --color-line-soft: #e9eef7;
-    --color-line-strong: #b7c3da;
+    --color-line: #e0ded8;
+    --color-line-soft: #edece8;
+    --color-line-strong: #c7c4bc;
 
     /* ---- type ---- */
-    --color-ink: #0f1a2e;
-    --color-ink-muted: #52607a;
-    --color-ink-subtle: #78849c;
+    --color-ink: #121212;
+    --color-ink-muted: #57534e;
+    --color-ink-subtle: #736d66;
     --color-ink-inverse: #ffffff;
 
     /* ---- brand ---- */
-    --color-primary: #1f57d6;
+    --color-primary: #8a6300;
     /* Hover darkens here; on the dark theme it lightens. Both move *away*
        from the surface, which is what makes a hover read as a hover. */
-    --color-primary-hover: #1a4bbc;
-    --color-primary-active: #163f9e;
-    --color-primary-soft: #e6edfd;
-    --color-primary-ring: #1f57d659;
+    --color-primary-hover: #7a5700;
+    --color-primary-active: #6b4c00;
+    --color-primary-soft: #fbf3d5;
+    --color-primary-ring: #8a630059;
 
-    --color-accent: #0d8b93;
-    --color-accent-soft: #dff4f5;
+    --color-accent: #a15c00;
+    --color-accent-soft: #fcefd9;
 
     /* ---- semantic ---- */
     --color-success: #157f47;
     --color-success-soft: #e2f4ea;
-    --color-warning: #8f5f0e;
-    --color-warning-soft: #fbf0d9;
+    --color-warning: #b4480c;
+    --color-warning-soft: #fdebdc;
     --color-danger: #c22f38;
     --color-danger-soft: #fce9eb;
     --color-info: #1f57d6;
@@ -322,16 +328,16 @@
     --color-odds-down: #c22f38;
 
     /* ---- elevation ----
-       Cool, low-opacity navy rather than black: a neutral shadow on a blue-gray
-       ground reads as dirt. */
-    --shadow-e1: 0 1px 2px 0 rgb(15 26 46 / 0.06);
-    --shadow-e2: 0 2px 8px -2px rgb(15 26 46 / 0.10), 0 1px 2px rgb(15 26 46 / 0.05);
-    --shadow-e3: 0 12px 28px -12px rgb(15 26 46 / 0.16), 0 2px 6px rgb(15 26 46 / 0.07);
-    --shadow-e4: 0 24px 60px -24px rgb(15 26 46 / 0.22), 0 4px 12px rgb(15 26 46 / 0.09);
+       Neutral, low-opacity black: the ground is warm gray now, so a tinted
+       shadow would only muddy it. */
+    --shadow-e1: 0 1px 2px 0 rgb(12 10 9 / 0.06);
+    --shadow-e2: 0 2px 8px -2px rgb(12 10 9 / 0.10), 0 1px 2px rgb(12 10 9 / 0.05);
+    --shadow-e3: 0 12px 28px -12px rgb(12 10 9 / 0.16), 0 2px 6px rgb(12 10 9 / 0.07);
+    --shadow-e4: 0 24px 60px -24px rgb(12 10 9 / 0.22), 0 4px 12px rgb(12 10 9 / 0.09);
 
     /* A white card needs no lit edge; the shadow already separates it. */
     --edge-highlight: transparent;
-    --hero-tint-primary: 9%;
+    --hero-tint-primary: 10%;
     --hero-tint-accent: 5%;
   }
 }

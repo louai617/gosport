@@ -35,7 +35,7 @@ export function GameShell({ game, children, className }: GameShellProps) {
   const title = game.nameKey ? t(game.nameKey) : (game.name ?? game.slug);
 
   return (
-    <div className={cn("mx-auto max-w-[1200px] px-4 py-6 sm:px-6 lg:px-8", className)}>
+    <div className={cn("max-w-[1200px]", className)}>
       <Link
         href="/games"
         className="inline-flex items-center gap-1.5 text-small text-ink-muted transition-colors duration-fast hover:text-ink"
@@ -75,7 +75,9 @@ export function GameShell({ game, children, className }: GameShellProps) {
         {t("games.demoNotice")}
       </Alert>
 
-      <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
+      {/* Measured against the page column, not the viewport: beside the rail a
+          1024px screen leaves too little room for board and controls side by side. */}
+      <div className="mt-5 grid gap-4 @3xl:grid-cols-[minmax(0,1fr)_320px] @3xl:items-start">
         {children}
         <RoundHistory gameKey={game.key} />
         {/* Only for games that actually are. Blackjack and roulette resolve on

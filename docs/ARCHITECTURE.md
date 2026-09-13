@@ -73,11 +73,15 @@ sportgo/
    │  ├─ layout.tsx  providers.tsx  globals.css
    │  ├─ (shell)/                   public sportsbook — header/nav/footer
    │  │  ├─ layout.tsx
-   │  │  ├─ page.tsx                     /
-   │  │  ├─ sports/page.tsx              /sports
-   │  │  ├─ sports/[sport]/page.tsx      /sports/football
-   │  │  ├─ live/page.tsx                /live
-   │  │  ├─ event/[id]/page.tsx          /event/:id
+   │  │  ├─ (sportsbook)/                shared rail + slip layout
+   │  │  │  ├─ layout.tsx  loading.tsx
+   │  │  │  ├─ page.tsx                  /
+   │  │  │  ├─ sports/page.tsx           /sports
+   │  │  │  ├─ sports/[sport]/page.tsx   /sports/football?country=gb-eng
+   │  │  │  ├─ competition/[id]/page.tsx /competition/:id
+   │  │  │  ├─ event/[id]/page.tsx       /event/:id
+   │  │  │  ├─ live/page.tsx             /live
+   │  │  │  └─ games/…                   /games, /games/[slug], /games/fairness
    │  │  ├─ results/page.tsx             /results
    │  │  ├─ promotions/…                 /promotions, /promotions/[slug]
    │  │  ├─ responsible-gambling/page.tsx
@@ -188,9 +192,14 @@ RootLayout  (html lang/dir · fonts · I18nProvider · ToastProvider)
 │   ├─ PromoStrip → PromotionCard[]
 │   └─ ResponsibleGamblingNote
 │
-├─ Sportsbook page  (3 columns: 260 | 1fr | 340)
-│   ├─ SportsSidebar           Sports · Competitions · Countries · Favourites
-│   ├─ CompetitionSection[]    → MatchRow[] → MarketGroup → OddsButton
+├─ (sportsbook)/layout  → SportsbookShell   rail · page · slip, kept across navigation
+│   ├─ SportsSidebar           search · All sports · Popular · sport → country → league
+│   │                          · Games → category → game (playable only)
+│   │  SportsRail              collapsed icon rail (cookie-persisted)
+│   │  SportsbookNavTrigger    < lg: selection bar that opens the rail as a Drawer
+│   ├─ {page}                  / · /sports · /sports/[sport]?country= · /competition/[id]
+│   │                          /event/[id] · /live · /games/** (no slip column beside a game)
+│   │   └─ CompetitionSection[] → MatchRow[] → MarketGroup → OddsButton
 │   └─ BetSlipPanel            sticky
 │
 └─ BetSlip  (one store, three surfaces)
@@ -214,17 +223,18 @@ accessible name reads *"Espérance to win, odds 1.75, Espérance vs Club Africai
 
 Tokens live in `src/app/globals.css` under `@theme`. Nothing hard-codes a hex.
 
-**Colour** — one blue, used deliberately; semantics restrained.
+**Colour** — near-black grounds, one yellow, used deliberately; semantics
+restrained. Warning is orange so nothing but the brand reads as yellow.
 
 | Role | Token | Value |
 |---|---|---|
-| Page ground | `canvas` / `canvas-soft` | `#070b16` / `#0a1020` |
-| Card | `surface` / `-2` / `-3` | `#0e1527` / `#141d33` / `#1b2643` |
-| Hairline | `line` / `-soft` / `-strong` | `#1e2a45` / `#172037` / `#2c3b5e` |
-| Text | `ink` / `-muted` / `-subtle` | `#f4f7fc` / `#9aabc9` / `#6b7c9c` |
-| Brand | `primary` (+hover/active/soft) | `#3b74ff` |
+| Page ground | `canvas` / `canvas-soft` | `#070707` / `#0c0c0c` |
+| Card | `surface` / `-2` / `-3` | `#111111` / `#181818` / `#222222` |
+| Hairline | `line` / `-soft` / `-strong` | `#262626` / `#1c1c1c` / `#3a3a3a` |
+| Text | `ink` / `-muted` / `-subtle` / `-inverse` | `#f5f5f4` / `#a8a8a8` / `#828282` / `#0a0a0a` |
+| Brand | `primary` (+hover/active/soft) | `#f5c518` (light theme: deep gold `#8a6300`) |
 | Live | `live` | `#ff4d5e` |
-| Success / Warning / Danger / Info | | `#2fbf71` / `#e0a339` / `#e2565c` / `#4d8dff` |
+| Success / Warning / Danger / Info | | `#2fbf71` / `#ff8a3d` / `#e5484d` / `#5b9dff` |
 
 **Type** — Inter (Latin) + Noto Sans Arabic, `display / h1 / h2 / h3 / body /
 small / caption`, negative tracking on headings, tabular numerals on every odds,

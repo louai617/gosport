@@ -29,5 +29,19 @@
   "sportsbook.search.resultsFor": "Résultats pour « {query} »",
   "sportsbook.search.prompt": "Recherchez une équipe, une compétition, un sport ou un match.",
   "sportsbook.popular.title": "Populaires en ce moment",
-  "sportsbook.popular.description": "Les compétitions et matchs qui attirent le plus l'attention."
+  "sportsbook.popular.description": "Les compétitions et matchs qui attirent le plus l'attention.",
+  "sportsbook.nav.title": "Sports et jeux",
+  "sportsbook.nav.searchPlaceholder": "Trouver une ligue…",
+  "sportsbook.nav.clearSearch": "Effacer la recherche",
+  "sportsbook.nav.noLeagues": "Aucune compétition pour « {query} »",
+  "sportsbook.nav.noLeaguesHint": "Essayez un pays, un sport ou un nom plus court.",
+  "sportsbook.nav.popular": "Populaires",
+  "sportsbook.nav.collapse": "Réduire le panneau",
+  "sportsbook.nav.expand": "Déplier le panneau",
+  "sportsbook.nav.expandGroup": "Afficher {name}",
+  "sportsbook.nav.collapseGroup": "Masquer {name}",
+  "sportsbook.nav.browse": "Parcourir",
+  "sportsbook.nav.openBrowser": "Parcourir les sports et les jeux",
+  "sportsbook.nav.breadcrumb": "Fil d’Ariane",
+  "sportsbook.nav.allGames": "Tous les jeux"
 }

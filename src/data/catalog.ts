@@ -61,6 +61,10 @@ const countryId = (code: string) => `country-${code}`;
  * a Senegalese international, a Lithuanian basketball club — is filed under
  * "WW", because inventing a country entry with no `countries.<code>`
  * translation would render a raw key on screen.
+ *
+ * England sits beside the United Kingdom rather than replacing it: football is
+ * organised by the English FA, so its leagues and clubs belong to England,
+ * while a British driver or boxer — and the nationality picker — stay "GB".
  */
 export const COUNTRIES: Country[] = [
   { id: countryId("TN"), code: "TN", nameKey: "countries.TN", flag: "🇹🇳" },
@@ -68,6 +72,14 @@ export const COUNTRIES: Country[] = [
   { id: countryId("DZ"), code: "DZ", nameKey: "countries.DZ", flag: "🇩🇿" },
   { id: countryId("EG"), code: "EG", nameKey: "countries.EG", flag: "🇪🇬" },
   { id: countryId("GB"), code: "GB", nameKey: "countries.GB", flag: "🇬🇧" },
+  {
+    id: countryId("GB-ENG"),
+    code: "GB-ENG",
+    nameKey: "countries.GB-ENG",
+    // Black flag + the invisible tag letters "gbeng" — spelled out because the
+    // tags do not survive most editors.
+    flag: "\u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}",
+  },
   { id: countryId("ES"), code: "ES", nameKey: "countries.ES", flag: "🇪🇸" },
   { id: countryId("FR"), code: "FR", nameKey: "countries.FR", flag: "🇫🇷" },
   { id: countryId("IT"), code: "IT", nameKey: "countries.IT", flag: "🇮🇹" },
@@ -76,6 +88,7 @@ export const COUNTRIES: Country[] = [
   { id: countryId("NL"), code: "NL", nameKey: "countries.NL", flag: "🇳🇱" },
   { id: countryId("TR"), code: "TR", nameKey: "countries.TR", flag: "🇹🇷" },
   { id: countryId("SA"), code: "SA", nameKey: "countries.SA", flag: "🇸🇦" },
+  { id: countryId("QA"), code: "QA", nameKey: "countries.QA", flag: "🇶🇦" },
   { id: countryId("US"), code: "US", nameKey: "countries.US", flag: "🇺🇸" },
   { id: countryId("WW"), code: "WW", nameKey: "countries.WW", flag: "🌍" },
 ];
@@ -268,7 +281,7 @@ const AFRICA_NATIONS = defineRoster({
 
 const EN_CLUBS = defineRoster({
   prefix: "fb",
-  country: "GB",
+  country: "GB-ENG",
   band: [0.93, 0.62],
   rows: [
     ["MCI", "Manchester City", "Man City"],
@@ -345,6 +358,156 @@ const DE_CLUBS = defineRoster({
     ["VFB", "VfB Stuttgart", "Stuttgart"],
     ["WOB", "VfL Wolfsburg", "Wolfsburg"],
     ["SCF", "SC Freiburg", "Freiburg"],
+  ],
+});
+
+/*
+ * Second tiers and the sides that only meet the elite in the cups. Eight a
+ * division is enough for a round of fixtures; the ranking order still drives
+ * prices, so a Championship side is short against League Two opposition.
+ */
+
+const EN_CHAMPIONSHIP = defineRoster({
+  prefix: "fb",
+  country: "GB-ENG",
+  band: [0.66, 0.5],
+  rows: [
+    ["LEI", "Leicester City", "Leicester"],
+    ["SOU", "Southampton", "Southampton"],
+    ["IPS", "Ipswich Town", "Ipswich"],
+    ["SHU", "Sheffield United", "Sheffield Utd"],
+    ["MID", "Middlesbrough", "Middlesbrough"],
+    ["WBA", "West Bromwich Albion", "West Brom"],
+    ["NOR", "Norwich City", "Norwich"],
+    ["COV", "Coventry City", "Coventry"],
+  ],
+});
+
+const EN_LEAGUE_ONE = defineRoster({
+  prefix: "fb",
+  country: "GB-ENG",
+  band: [0.52, 0.4],
+  rows: [
+    ["WIG", "Wigan Athletic", "Wigan"],
+    ["BOL", "Bolton Wanderers", "Bolton"],
+    ["HUD", "Huddersfield Town", "Huddersfield"],
+    ["REA", "Reading", "Reading"],
+    ["BRN", "Barnsley", "Barnsley"],
+    ["STO", "Stockport County", "Stockport"],
+    ["PET", "Peterborough United", "Peterborough"],
+    ["WYC", "Wycombe Wanderers", "Wycombe"],
+  ],
+});
+
+const EN_LEAGUE_TWO = defineRoster({
+  prefix: "fb",
+  country: "GB-ENG",
+  band: [0.42, 0.3],
+  rows: [
+    ["BRA", "Bradford City", "Bradford"],
+    ["NOT", "Notts County", "Notts County"],
+    ["GIL", "Gillingham", "Gillingham"],
+    ["SWI", "Swindon Town", "Swindon"],
+    ["CHF", "Chesterfield", "Chesterfield"],
+    ["WAL", "Walsall", "Walsall"],
+    ["GRI", "Grimsby Town", "Grimsby"],
+    ["SAL", "Salford City", "Salford"],
+  ],
+});
+
+const ES_SEGUNDA = defineRoster({
+  prefix: "fb",
+  country: "ES",
+  band: [0.6, 0.45],
+  rows: [
+    ["ZAR", "Real Zaragoza", "Zaragoza"],
+    ["SPG", "Real Sporting de Gijón", "Sporting Gijón"],
+    ["RAC", "Real Racing Club de Santander", "Racing"],
+    ["DEP", "RC Deportivo de La Coruña", "Deportivo"],
+    ["MAL", "Málaga CF", "Málaga"],
+    ["GRA", "Granada CF", "Granada"],
+    ["CAD", "Cádiz CF", "Cádiz"],
+    ["ALM", "UD Almería", "Almería"],
+  ],
+});
+
+const IT_SERIE_B = defineRoster({
+  prefix: "fb",
+  country: "IT",
+  band: [0.6, 0.45],
+  rows: [
+    ["SAM", "UC Sampdoria", "Sampdoria"],
+    ["PAL", "Palermo FC", "Palermo"],
+    ["BRI", "SSC Bari", "Bari"],
+    ["SPE", "Spezia Calcio", "Spezia"],
+    ["MOD", "Modena FC", "Modena"],
+    ["VEN", "Venezia FC", "Venezia"],
+    ["CTZ", "US Catanzaro", "Catanzaro"],
+    ["FRO", "Frosinone Calcio", "Frosinone"],
+  ],
+});
+
+const DE_BUNDESLIGA_2 = defineRoster({
+  prefix: "fb",
+  country: "DE",
+  band: [0.62, 0.45],
+  rows: [
+    ["S04", "FC Schalke 04", "Schalke"],
+    ["BSC", "Hertha BSC", "Hertha"],
+    ["F95", "Fortuna Düsseldorf", "Düsseldorf"],
+    ["H96", "Hannover 96", "Hannover"],
+    ["FCN", "1. FC Nürnberg", "Nürnberg"],
+    ["KSC", "Karlsruher SC", "Karlsruhe"],
+    ["PAD", "SC Paderborn 07", "Paderborn"],
+    ["FCK", "1. FC Kaiserslautern", "Kaiserslautern"],
+  ],
+});
+
+const FR_LIGUE_2 = defineRoster({
+  prefix: "fb",
+  country: "FR",
+  band: [0.58, 0.44],
+  rows: [
+    ["ASE", "AS Saint-Étienne", "Saint-Étienne"],
+    ["MHS", "Montpellier HSC", "Montpellier"],
+    ["REI", "Stade de Reims", "Reims"],
+    ["EAG", "En Avant Guingamp", "Guingamp"],
+    ["BAS", "SC Bastia", "Bastia"],
+    ["GRE", "Grenoble Foot 38", "Grenoble"],
+    ["AMI", "Amiens SC", "Amiens"],
+    ["RSF", "Red Star FC", "Red Star"],
+  ],
+});
+
+const SA_CLUBS = defineRoster({
+  prefix: "fb",
+  country: "SA",
+  band: [0.8, 0.55],
+  rows: [
+    ["HIL", "Al Hilal SFC", "Al Hilal"],
+    ["NAS", "Al Nassr FC", "Al Nassr"],
+    ["ITT", "Al Ittihad Club", "Al Ittihad"],
+    ["AHS", "Al Ahli Saudi FC", "Al Ahli"],
+    ["QAD", "Al Qadsiah FC", "Al Qadsiah"],
+    ["SHB", "Al Shabab FC", "Al Shabab"],
+    ["ETT", "Al Ettifaq FC", "Al Ettifaq"],
+    ["TAA", "Al Taawoun FC", "Al Taawoun"],
+  ],
+});
+
+const QA_CLUBS = defineRoster({
+  prefix: "fb",
+  country: "QA",
+  band: [0.7, 0.48],
+  rows: [
+    ["SAD", "Al Sadd SC", "Al Sadd"],
+    ["DUH", "Al Duhail SC", "Al Duhail"],
+    ["RAY", "Al Rayyan SC", "Al Rayyan"],
+    ["GHA", "Al Gharafa SC", "Al Gharafa"],
+    ["ARB", "Al Arabi SC", "Al Arabi"],
+    ["WAK", "Al Wakrah SC", "Al Wakrah"],
+    ["QSC", "Qatar SC", "Qatar SC"],
+    ["UMS", "Umm Salal SC", "Umm Salal"],
   ],
 });
 
@@ -526,7 +689,7 @@ const SIX_NATIONS_TEAMS = defineRoster({
   rows: [
     ["IRE", "Ireland", "Ireland"],
     ["FRA", "France", "France", "FR"],
-    ["ENG", "England", "England", "GB"],
+    ["ENG", "England", "England", "GB-ENG"],
     ["SCO", "Scotland", "Scotland"],
     ["ITA", "Italy", "Italy", "IT"],
     ["WAL", "Wales", "Wales"],
@@ -598,6 +761,15 @@ export const TEAMS: Team[] = [
   ...FR_CLUBS,
   ...IT_CLUBS,
   ...DE_CLUBS,
+  ...EN_CHAMPIONSHIP,
+  ...EN_LEAGUE_ONE,
+  ...EN_LEAGUE_TWO,
+  ...ES_SEGUNDA,
+  ...IT_SERIE_B,
+  ...DE_BUNDESLIGA_2,
+  ...FR_LIGUE_2,
+  ...SA_CLUBS,
+  ...QA_CLUBS,
   ...EU_CLUBS,
   ...NBA_TEAMS,
   ...EUROLEAGUE_TEAMS,
@@ -623,7 +795,7 @@ function competition(
   name: string,
   shortName: string,
   popular = false,
-): CompetitionSeed {
+): Omit<CompetitionSeed, "order"> {
   return {
     id,
     sportId: sportId(sport),
@@ -636,6 +808,11 @@ function competition(
   };
 }
 
+/**
+ * Authored in navigation order: within a country the top flight comes first,
+ * then the lower divisions, then the cups. `order` is stamped from the position
+ * below, so reordering the list is the only way to reorder the sidebar.
+ */
 export const COMPETITIONS: CompetitionSeed[] = [
   // Tunisia leads the list — it is the market this product is built for.
   competition("comp-tn-lp1", "football", "TN", "Ligue Professionnelle 1", "Ligue 1", true),
@@ -652,16 +829,33 @@ export const COMPETITIONS: CompetitionSeed[] = [
   competition("comp-eg-pl", "football", "EG", "Egyptian Premier League", "Egypt PL"),
 
   // Europe.
-  competition("comp-en-pl", "football", "GB", "Premier League", "Premier League", true),
+  competition("comp-en-pl", "football", "GB-ENG", "Premier League", "Premier League", true),
+  competition("comp-en-championship", "football", "GB-ENG", "Championship", "Championship"),
+  competition("comp-en-league-one", "football", "GB-ENG", "League One", "League One"),
+  competition("comp-en-league-two", "football", "GB-ENG", "League Two", "League Two"),
+  competition("comp-en-fa-cup", "football", "GB-ENG", "FA Cup", "FA Cup"),
+  competition("comp-en-efl-cup", "football", "GB-ENG", "EFL Cup", "EFL Cup"),
   competition("comp-es-laliga", "football", "ES", "LaLiga", "LaLiga", true),
-  competition("comp-fr-l1", "football", "FR", "Ligue 1", "Ligue 1 FR", true),
+  competition("comp-es-segunda", "football", "ES", "Segunda División", "Segunda"),
+  competition("comp-es-copa", "football", "ES", "Copa del Rey", "Copa del Rey"),
   competition("comp-it-seriea", "football", "IT", "Serie A", "Serie A", true),
-  competition("comp-de-bundesliga", "football", "DE", "Bundesliga", "Bundesliga"),
+  competition("comp-it-serieb", "football", "IT", "Serie B", "Serie B"),
+  competition("comp-it-coppa", "football", "IT", "Coppa Italia", "Coppa Italia"),
+  competition("comp-de-bundesliga", "football", "DE", "Bundesliga", "Bundesliga", true),
+  competition("comp-de-bundesliga2", "football", "DE", "2. Bundesliga", "2. Bundesliga"),
+  competition("comp-de-pokal", "football", "DE", "DFB-Pokal", "DFB-Pokal"),
+  competition("comp-fr-l1", "football", "FR", "Ligue 1", "Ligue 1 FR", true),
+  competition("comp-fr-l2", "football", "FR", "Ligue 2", "Ligue 2 FR"),
+  competition("comp-fr-coupe", "football", "FR", "Coupe de France", "Coupe de France"),
   competition("comp-uefa-ucl", "football", "WW", "UEFA Champions League", "Champions League", true),
   competition("comp-uefa-uel", "football", "WW", "UEFA Europa League", "Europa League"),
 
+  // Gulf.
+  competition("comp-sa-spl", "football", "SA", "Saudi Pro League", "Saudi Pro League"),
+  competition("comp-qa-qsl", "football", "QA", "Qatar Stars League", "Stars League"),
+
   // Basketball.
-  competition("comp-nba", "basketball", "US", "NBA", "NBA"),
+  competition("comp-nba", "basketball", "US", "NBA", "NBA", true),
   competition("comp-euroleague", "basketball", "WW", "EuroLeague", "EuroLeague"),
   competition("comp-tn-basket", "basketball", "TN", "Championnat National A", "Nationale A"),
 
@@ -685,7 +879,7 @@ export const COMPETITIONS: CompetitionSeed[] = [
   // Individual sports.
   competition("comp-boxing-world", "boxing", "WW", "World Title Fights", "World Titles"),
   competition("comp-f1", "formula1", "WW", "Formula 1 World Championship", "Formula 1"),
-];
+].map((seed, index) => ({ ...seed, order: index + 1 }));
 
 /**
  * Who can be drawn against whom. A club appears in every competition it would
@@ -738,10 +932,34 @@ export const COMPETITION_ROSTERS: Readonly<Record<string, readonly string[]>> = 
   ],
 
   "comp-en-pl": ids(EN_CLUBS),
+  "comp-en-championship": ids(EN_CHAMPIONSHIP),
+  "comp-en-league-one": ids(EN_LEAGUE_ONE),
+  "comp-en-league-two": ids(EN_LEAGUE_TWO),
+  "comp-en-fa-cup": [
+    ...ids(EN_CLUBS).slice(0, 6),
+    ...ids(EN_CHAMPIONSHIP).slice(0, 4),
+    ...ids(EN_LEAGUE_ONE).slice(0, 2),
+    ...ids(EN_LEAGUE_TWO).slice(0, 2),
+  ],
+  "comp-en-efl-cup": [
+    ...ids(EN_CLUBS).slice(4),
+    ...ids(EN_CHAMPIONSHIP),
+    ...ids(EN_LEAGUE_ONE).slice(0, 2),
+  ],
   "comp-es-laliga": ids(ES_CLUBS),
-  "comp-fr-l1": ids(FR_CLUBS),
+  "comp-es-segunda": ids(ES_SEGUNDA),
+  "comp-es-copa": [...ids(ES_CLUBS), ...ids(ES_SEGUNDA).slice(0, 4)],
   "comp-it-seriea": ids(IT_CLUBS),
+  "comp-it-serieb": ids(IT_SERIE_B),
+  "comp-it-coppa": [...ids(IT_CLUBS), ...ids(IT_SERIE_B).slice(0, 4)],
   "comp-de-bundesliga": ids(DE_CLUBS),
+  "comp-de-bundesliga2": ids(DE_BUNDESLIGA_2),
+  "comp-de-pokal": [...ids(DE_CLUBS), ...ids(DE_BUNDESLIGA_2).slice(0, 4)],
+  "comp-fr-l1": ids(FR_CLUBS),
+  "comp-fr-l2": ids(FR_LIGUE_2),
+  "comp-fr-coupe": [...ids(FR_CLUBS), ...ids(FR_LIGUE_2).slice(0, 4)],
+  "comp-sa-spl": ids(SA_CLUBS),
+  "comp-qa-qsl": ids(QA_CLUBS),
   "comp-uefa-ucl": [
     ...ids(EN_CLUBS).slice(0, 4),
     ...ids(ES_CLUBS).slice(0, 3),

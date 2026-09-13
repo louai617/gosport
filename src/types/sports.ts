@@ -33,7 +33,10 @@ export interface Sport {
 
 export interface Country {
   id: string;
-  /** ISO 3166-1 alpha-2, uppercase. */
+  /**
+   * ISO 3166-1 alpha-2, uppercase — or an ISO 3166-2 subdivision (`GB-ENG`)
+   * where a sport organises below the state, as English football does.
+   */
   code: string;
   nameKey: string;
   /** Unicode regional-indicator flag; purely decorative, always aria-hidden. */
@@ -49,6 +52,12 @@ export interface Competition {
   shortName: string;
   /** `true` for competitions surfaced in "Popular competitions". */
   popular: boolean;
+  /**
+   * Ordering in navigation (ascending). Tier order a feed would supply — the
+   * top flight before the second division before the cup — which neither the
+   * name nor the fixture count can reproduce.
+   */
+  order: number;
   eventCount: number;
   liveEventCount: number;
   /** Two-letter monogram used by the placeholder crest component. */

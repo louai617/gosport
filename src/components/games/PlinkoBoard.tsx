@@ -131,7 +131,7 @@ export function PlinkoBoard() {
                 )}
                 style={{
                   backgroundColor: `oklch(${0.32 + intensity * 0.24} ${0.06 + intensity * 0.13} ${60 - intensity * 55})`,
-                  color: intensity > 0.55 ? "#0b0f1a" : "#e8eefc",
+                  color: intensity > 0.55 ? "#0a0a0a" : "#f5f5f4",
                 }}
               >
                 {multiplier < 10 ? multiplier.toFixed(2) : multiplier}

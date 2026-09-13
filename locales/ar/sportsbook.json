@@ -29,5 +29,19 @@
   "sportsbook.search.resultsFor": "نتائج البحث عن “{query}”",
   "sportsbook.search.prompt": "ابحث عن فريق أو بطولة أو رياضة أو مباراة.",
   "sportsbook.popular.title": "الأكثر رواجًا الآن",
-  "sportsbook.popular.description": "البطولات والمباريات الأكثر متابعة على اللوحة."
+  "sportsbook.popular.description": "البطولات والمباريات الأكثر متابعة على اللوحة.",
+  "sportsbook.nav.title": "الرياضات والألعاب",
+  "sportsbook.nav.searchPlaceholder": "ابحث عن بطولة…",
+  "sportsbook.nav.clearSearch": "مسح البحث",
+  "sportsbook.nav.noLeagues": "لا توجد بطولة تطابق «{query}»",
+  "sportsbook.nav.noLeaguesHint": "جرّب اسم بلد أو رياضة أو اسمًا أقصر.",
+  "sportsbook.nav.popular": "الأكثر شعبية",
+  "sportsbook.nav.collapse": "طيّ الشريط الجانبي",
+  "sportsbook.nav.expand": "توسيع الشريط الجانبي",
+  "sportsbook.nav.expandGroup": "إظهار {name}",
+  "sportsbook.nav.collapseGroup": "إخفاء {name}",
+  "sportsbook.nav.browse": "تصفّح",
+  "sportsbook.nav.openBrowser": "تصفّح الرياضات والألعاب",
+  "sportsbook.nav.breadcrumb": "مسار التنقل",
+  "sportsbook.nav.allGames": "كل الألعاب"
 }

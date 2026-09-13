@@ -172,8 +172,10 @@ real layout), **empty** (icon + one line + optional action), **error**
 ## 12. Layout geometry
 
 - Shell max width: `max-w-[1440px]` centred, `px-4 sm:px-6 lg:px-8`.
-- Desktop sportsbook grid: `260px | 1fr | 340px` (left rail, centre, bet slip).
-- Tablet: left rail collapses to a drawer → `1fr | 320px`.
+- Desktop sportsbook grid: `264px | 1fr | 340px` (left rail, centre, bet slip);
+  the rail collapses to `60px` of sport icons.
+- Tablet (`lg`): `228px | 1fr` — narrower rail, bet slip becomes the bottom sheet.
+  Below `lg` the rail becomes a start-edge drawer.
 - Mobile: single column, bet slip becomes a floating bar + bottom sheet.
 - Sticky header is 60px (`--spacing-header`); the sports nav sits below it and
   is also sticky on desktop.

@@ -29,5 +29,19 @@
   "sportsbook.search.resultsFor": "Results for “{query}”",
   "sportsbook.search.prompt": "Search for a team, competition, sport or match.",
   "sportsbook.popular.title": "Popular right now",
-  "sportsbook.popular.description": "The competitions and matches drawing the most attention on the board."
+  "sportsbook.popular.description": "The competitions and matches drawing the most attention on the board.",
+  "sportsbook.nav.title": "Sports & games",
+  "sportsbook.nav.searchPlaceholder": "Search leagues…",
+  "sportsbook.nav.clearSearch": "Clear search",
+  "sportsbook.nav.noLeagues": "No leagues match “{query}”",
+  "sportsbook.nav.noLeaguesHint": "Try a country, a sport or a shorter name.",
+  "sportsbook.nav.popular": "Popular",
+  "sportsbook.nav.collapse": "Collapse sidebar",
+  "sportsbook.nav.expand": "Expand sidebar",
+  "sportsbook.nav.expandGroup": "Show {name}",
+  "sportsbook.nav.collapseGroup": "Hide {name}",
+  "sportsbook.nav.browse": "Browse",
+  "sportsbook.nav.openBrowser": "Browse sports and games",
+  "sportsbook.nav.breadcrumb": "Breadcrumb",
+  "sportsbook.nav.allGames": "All games"
 }

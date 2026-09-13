@@ -20,8 +20,8 @@ export default function GlobalError({
           minHeight: "100dvh",
           display: "grid",
           placeItems: "center",
-          background: "#070b16",
-          color: "#f4f7fc",
+          background: "#070707",
+          color: "#f5f5f4",
           fontFamily: "ui-sans-serif, system-ui, -apple-system, sans-serif",
           textAlign: "center",
           padding: "2rem",
@@ -29,11 +29,11 @@ export default function GlobalError({
       >
         <div>
           <h1 style={{ fontSize: "1.5rem", margin: 0 }}>Something went wrong</h1>
-          <p style={{ color: "#9aabc9", marginTop: "0.5rem" }}>
+          <p style={{ color: "#a8a8a8", marginTop: "0.5rem" }}>
             SportGo could not load this page.
           </p>
           {error.digest ? (
-            <p style={{ color: "#6b7c9c", fontSize: "0.75rem", marginTop: "0.75rem" }}>
+            <p style={{ color: "#828282", fontSize: "0.75rem", marginTop: "0.75rem" }}>
               {error.digest}
             </p>
           ) : null}
@@ -45,8 +45,8 @@ export default function GlobalError({
               padding: "0.5rem 1rem",
               borderRadius: "9px",
               border: "none",
-              background: "#3b74ff",
-              color: "#060a14",
+              background: "#f5c518",
+              color: "#0a0a0a",
               fontWeight: 600,
               cursor: "pointer",
             }}

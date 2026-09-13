@@ -39,8 +39,8 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   // Matches each theme's canvas, so the browser chrome does not fight the page.
   themeColor: [
-    { media: "(prefers-color-scheme: dark)", color: "#070b16" },
-    { media: "(prefers-color-scheme: light)", color: "#f3f6fc" },
+    { media: "(prefers-color-scheme: dark)", color: "#070707" },
+    { media: "(prefers-color-scheme: light)", color: "#f4f4f2" },
   ],
   width: "device-width",
   initialScale: 1,

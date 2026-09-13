@@ -40,7 +40,7 @@ export default async function GamesPage() {
   const playable = games.filter((game) => game.status === "playable");
 
   return (
-    <div className="mx-auto max-w-[1440px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+    <div>
       <header className="max-w-3xl">
         <h1 className="text-display text-ink">{t("games.title")}</h1>
         <p className="mt-2 text-body leading-relaxed text-ink-muted">
@@ -84,7 +84,7 @@ export default async function GamesPage() {
           </span>
         }
       >
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 @md:grid-cols-3 @2xl:grid-cols-4 @4xl:grid-cols-5">
           {byCategory("originals").map((game) => (
             <GameCard key={game.id} game={game} />
           ))}
@@ -102,7 +102,7 @@ export default async function GamesPage() {
             title={t(`games.category.${category}`)}
             description={t("games.providerSection.description")}
           >
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            <div className="grid grid-cols-2 gap-3 @md:grid-cols-3 @2xl:grid-cols-4 @4xl:grid-cols-5">
               {entries.map((game) => (
                 <GameCard key={game.id} game={game} />
               ))}
@@ -117,7 +117,7 @@ export default async function GamesPage() {
         title={t("games.providers.title")}
         description={t("games.providers.description")}
       >
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 @md:grid-cols-2 @4xl:grid-cols-4">
           {providers.map((provider) => {
             const connected = provider.status === "connected";
             return (

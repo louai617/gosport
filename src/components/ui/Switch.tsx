@@ -52,10 +52,12 @@ export function Switch({
       <span
         aria-hidden="true"
         className={cn(
-          "size-4 rounded-full bg-ink shadow-e1",
-          "transition-transform duration-base ease-out-quint",
-          // The knob travels along the inline axis, so RTL must mirror it.
-          checked ? "translate-x-5 rtl:-translate-x-5" : "translate-x-0",
+          "size-4 rounded-full shadow-e1",
+          "transition-[translate,background-color] duration-base ease-out-quint",
+          // The knob travels along the inline axis, so RTL must mirror it. On
+          // the yellow track it takes the on-primary colour — a light knob on
+          // yellow all but disappears.
+          checked ? "translate-x-5 bg-ink-inverse rtl:-translate-x-5" : "translate-x-0 bg-ink",
         )}
       />
     </button>

@@ -36,9 +36,9 @@ travelling rather than merely tilted.
 
 | Stop | Token | Value |
 |---|---|---|
-| 0 (lead bar) | `--color-primary` | `#3b74ff` |
-| 1 (trail bar) | `--color-primary-active` | `#2a5ee0` |
-| Ground (favicon) | `--color-canvas` | `#070b16` |
+| 0 (lead bar) | `--color-primary` | `#f5c518` |
+| 1 (trail bar) | `--color-primary-active` | `#d9ab08` |
+| Ground (favicon) | `--color-canvas` | `#070707` |
 
 Two flat tones exist for constrained contexts: `mono` (inherits `currentColor`,
 for use beside text) and `inverse` (`--color-ink-inverse`, for placing the mark

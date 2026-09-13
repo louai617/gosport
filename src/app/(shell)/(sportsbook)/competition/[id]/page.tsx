@@ -2,17 +2,16 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import {
   getCompetitionById,
-  getCompetitions,
   getCountries,
   getEvents,
-  getSports,
+  getSportById,
 } from "@/services/sportsService";
-import { getFavorites } from "@/services/userService";
 import { getT } from "@/i18n/server";
-import { SportsbookShell } from "@/components/layout/SportsbookShell";
-import { SportsSidebar } from "@/components/sports/SportsSidebar";
+import { sportsbookHref } from "@/lib/sportsbookNav";
 import { MatchList } from "@/components/matches/MatchList";
 import { CompetitionCrest } from "@/components/brand/CompetitionCrest";
+import { Breadcrumbs, type BreadcrumbItem } from "@/components/navigation/Breadcrumbs";
+import { SportIcon } from "@/components/sports/SportIcon";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -29,32 +28,42 @@ export default async function CompetitionPage({ params }: PageProps) {
   const competition = await getCompetitionById(id);
   if (!competition) notFound();
 
-  const [t, sports, competitions, countries, favorites, events] = await Promise.all([
+  const [t, sport, countries, events] = await Promise.all([
     getT(),
-    getSports(),
-    getCompetitions({ sportId: competition.sportId }),
+    getSportById(competition.sportId),
     getCountries(),
-    getFavorites(),
     getEvents({ competitionId: id, status: ["scheduled", "live"] }),
   ]);
 
   const country = countries.find((entry) => entry.id === competition.countryId);
-  const sport = sports.find((entry) => entry.id === competition.sportId);
+
+  const trail: BreadcrumbItem[] = [];
+  if (sport) {
+    trail.push({
+      label: t(sport.nameKey),
+      href: sportsbookHref.sport(sport.key),
+      icon: <SportIcon name={sport.icon} size={14} />,
+    });
+    if (country) {
+      trail.push({
+        label: t(country.nameKey),
+        href: sportsbookHref.country(sport.key, country.code),
+        icon: (
+          <span aria-hidden="true" className="text-[13px] leading-none">
+            {country.flag}
+          </span>
+        ),
+      });
+    }
+  }
+  trail.push({ label: competition.name });
 
   return (
-    <SportsbookShell
-      sidebar={
-        <SportsSidebar
-          sports={sports}
-          competitions={competitions}
-          countries={countries}
-          favorites={favorites}
-          activeSportKey={sport?.key}
-        />
-      }
-    >
-      <div className="space-y-6">
-        <header className="flex items-center gap-4">
+    <div className="space-y-6">
+      <header className="space-y-4">
+        <Breadcrumbs label={t("sportsbook.nav.breadcrumb")} items={trail} />
+
+        <div className="flex items-center gap-4">
           <CompetitionCrest
             name={competition.name}
             monogram={competition.monogram}
@@ -67,12 +76,15 @@ export default async function CompetitionPage({ params }: PageProps) {
             <p className="mt-1 text-small text-ink-muted">
               {country ? `${t(country.nameKey)} · ` : ""}
               {t("sportsbook.eventCount", { count: competition.eventCount })}
+              {competition.liveEventCount > 0
+                ? ` · ${t("sportsbook.liveCount", { count: competition.liveEventCount })}`
+                : ""}
             </p>
           </div>
-        </header>
+        </div>
+      </header>
 
-        <MatchList events={events} groupByDay showCompetition={false} />
-      </div>
-    </SportsbookShell>
+      <MatchList events={events} groupByDay showCompetition={false} />
+    </div>
   );
 }
