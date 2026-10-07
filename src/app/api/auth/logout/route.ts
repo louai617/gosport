@@ -1,17 +1,11 @@
-import { DEMO_SESSION_COOKIE, logout } from "@/services/userService";
 import { ok, withRoute } from "@/server/api";
+import { logoutUser } from "@/services/authService";
 
-/** POST /api/auth/logout — clears the demo session marker. */
+/** POST /api/auth/logout — revokes the session server-side and clears the cookie. */
 export const POST = withRoute(
   async () => {
-    await logout();
-
-    const response = ok({ signedOut: true });
-    response.headers.append(
-      "set-cookie",
-      `${DEMO_SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`,
-    );
-    return response;
+    await logoutUser();
+    return ok({ signedOut: true });
   },
-  { audit: "auth.logout" },
+  { csrf: true },
 );

@@ -6,7 +6,7 @@ import { Eye, EyeOff, Wallet } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { formatAmount } from "@/lib/format";
 import { useI18n } from "@/i18n/I18nProvider";
-import { useCasinoBalance } from "@/components/games/CasinoWalletProvider";
+import { useWalletBalance } from "@/components/wallet/WalletProvider";
 
 const HIDDEN_KEY = "sportgo.balance.hidden";
 const MASK = "••••••";
@@ -41,7 +41,7 @@ export function BalanceDisplay({
   const { t, locale } = useI18n();
   // The server ledger wins once it has answered; the prop is the SSR value
   // that keeps the first paint from being empty.
-  const liveBalance = useCasinoBalance();
+  const liveBalance = useWalletBalance();
   const balance = liveBalance ?? serverBalance;
   const [hidden, setHidden] = useState(false);
 

@@ -26,7 +26,7 @@ import { cn } from "@/lib/cn";
 import { formatAmount } from "@/lib/format";
 import { round2 } from "@/lib/games/constants";
 import { useI18n } from "@/i18n/I18nProvider";
-import { useCasinoWallet } from "./CasinoWalletProvider";
+import { useWallet } from "@/components/wallet/WalletProvider";
 import type { SlotsPlayResult } from "@/types/casino";
 import { Badge } from "@/components/ui/Badge";
 import { SlotSymbolIcon } from "./SlotSymbolIcon";
@@ -71,7 +71,7 @@ function winningCells(result: SpinResult | null): Set<string> {
 export function SlotsBoard() {
   const { t, locale } = useI18n();
   // Outcomes come from POST /api/casino/play; nothing here decides a result.
-  const { balance, ready, play } = useCasinoWallet();
+  const { balance, ready, play } = useWallet();
 
   const [stake, setStake] = useState(1);
   // A fixed idle grid rather than an empty one: the machine should look like a

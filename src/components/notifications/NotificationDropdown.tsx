@@ -4,6 +4,10 @@ import { useState } from "react";
 import Link from "next/link";
 import { Bell, BellOff, CheckCheck } from "lucide-react";
 import type { AppNotification } from "@/types";
+import {
+  markAllNotificationsReadAction,
+  markNotificationReadAction,
+} from "@/app/actions/account";
 import { cn } from "@/lib/cn";
 import { formatDateTime } from "@/lib/format";
 import { useI18n } from "@/i18n/I18nProvider";
@@ -16,8 +20,8 @@ export interface NotificationDropdownProps {
 
 export function NotificationDropdown({ notifications }: NotificationDropdownProps) {
   const { t, locale } = useI18n();
-  // Read state is local in demo mode; a real build would call the service and
-  // revalidate, which is why this component owns nothing but the flag.
+  // Optimistic: the badge clears at once, and the server records it. The server
+  // is the source of truth — a reload shows whatever it actually stored.
   const [readIds, setReadIds] = useState<string[]>([]);
 
   const isRead = (notification: AppNotification) =>
@@ -50,7 +54,10 @@ export function NotificationDropdown({ notifications }: NotificationDropdownProp
         {unread > 0 ? (
           <button
             type="button"
-            onClick={() => setReadIds(notifications.map((notification) => notification.id))}
+            onClick={() => {
+              setReadIds(notifications.map((notification) => notification.id));
+              void markAllNotificationsReadAction();
+            }}
             className="flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-caption normal-case tracking-normal text-ink-subtle transition-colors duration-fast hover:bg-surface-3 hover:text-ink"
           >
             <CheckCheck size={12} aria-hidden="true" />
@@ -71,7 +78,10 @@ export function NotificationDropdown({ notifications }: NotificationDropdownProp
             <li key={notification.id}>
               <Link
                 href={notification.href ?? "#"}
-                onClick={() => setReadIds((ids) => [...ids, notification.id])}
+                onClick={() => {
+                  setReadIds((ids) => [...ids, notification.id]);
+                  if (!notification.read) void markNotificationReadAction(notification.id);
+                }}
                 className={cn(
                   "flex gap-2.5 border-b border-line-soft px-3 py-2.5 transition-colors duration-fast last:border-b-0 hover:bg-surface-3",
                   !isRead(notification) && "bg-primary-soft/40",

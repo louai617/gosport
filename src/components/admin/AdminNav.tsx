@@ -4,16 +4,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BarChart3,
-  CalendarDays,
-  Gamepad2,
-  Gift,
+  Bell,
+  HandCoins,
   LayoutDashboard,
   Receipt,
+  ScrollText,
   Settings,
   ShieldCheck,
-  Trophy,
   Users,
-  Volleyball,
   Wallet,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -27,22 +25,22 @@ interface AdminNavItem {
   exact?: boolean;
 }
 
+/**
+ * Every entry here has a real backend behind it. The catalogue screens that used
+ * to sit in this list (events, competitions, promotions, game catalogue) edited a
+ * generated demo feed, not stored data, and were removed rather than left as
+ * controls that do nothing.
+ */
 const ITEMS: AdminNavItem[] = [
   { href: "/admin", labelKey: "admin.nav.dashboard", icon: LayoutDashboard, exact: true },
-  { href: "/admin/users", labelKey: "admin.nav.users", icon: Users },
-  { href: "/admin/events", labelKey: "admin.nav.events", icon: CalendarDays },
-  { href: "/admin/sports", labelKey: "admin.nav.sports", icon: Volleyball },
-  { href: "/admin/games", labelKey: "admin.nav.games", icon: Gamepad2 },
-  { href: "/admin/competitions", labelKey: "admin.nav.competitions", icon: Trophy },
-  { href: "/admin/bets", labelKey: "admin.nav.bets", icon: Receipt },
-  { href: "/admin/transactions", labelKey: "admin.nav.transactions", icon: Wallet },
-  { href: "/admin/promotions", labelKey: "admin.nav.promotions", icon: Gift },
+  { href: "/admin/players", labelKey: "admin.nav.players", icon: Users },
+  { href: "/admin/transactions", labelKey: "admin.nav.transactions", icon: Receipt },
+  { href: "/admin/wallet", labelKey: "admin.nav.wallet", icon: HandCoins },
+  { href: "/admin/bets", labelKey: "admin.nav.bets", icon: Wallet },
   { href: "/admin/reports", labelKey: "admin.nav.reports", icon: BarChart3 },
-  {
-    href: "/admin/responsible-gambling",
-    labelKey: "admin.nav.responsible",
-    icon: ShieldCheck,
-  },
+  { href: "/admin/responsible-gambling", labelKey: "admin.nav.responsible", icon: ShieldCheck },
+  { href: "/admin/audit", labelKey: "admin.nav.audit", icon: ScrollText },
+  { href: "/admin/notifications", labelKey: "admin.nav.notifications", icon: Bell },
   { href: "/admin/settings", labelKey: "admin.nav.settings", icon: Settings },
 ];
 

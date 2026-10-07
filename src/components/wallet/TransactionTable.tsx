@@ -17,7 +17,6 @@ export interface TransactionTableProps {
 const STATUS_TONE: Record<TransactionStatus, BadgeTone> = {
   completed: "success",
   pending: "info",
-  processing: "info",
   failed: "danger",
   cancelled: "neutral",
   reversed: "warning",
@@ -85,7 +84,9 @@ export function TransactionTable({ transactions, compact = false }: TransactionT
                           )}
                         </span>
                         <span className="min-w-0 truncate">
-                          {t(transaction.descriptionKey, transaction.params)}
+                          {transaction.descriptionKey
+                            ? t(transaction.descriptionKey, transaction.params)
+                            : (transaction.description ?? "—")}
                         </span>
                       </span>
                     </TD>

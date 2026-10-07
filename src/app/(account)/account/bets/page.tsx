@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { getBets } from "@/services/userService";
+import { getBets } from "@/services/bettingService";
 import { getT } from "@/i18n/server";
 import { BetHistoryTable } from "@/components/account/BetHistoryTable";
 

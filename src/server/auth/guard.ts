@@ -1,17 +1,25 @@
+import "server-only";
+
+import { cache } from "react";
+
+import { can, type Permission } from "@/server/auth/permissions";
 import { readSession } from "@/server/auth/session";
 import type { ApiErrorCode } from "@/types/api";
 import type { SessionUser, UserRole } from "@/types/user";
 
 /**
- * Authorisation guards for route handlers and server components.
+ * Authorisation guards for route handlers, server actions and services.
  *
  * Each guard either returns the session user or throws. Throwing rather than
- * returning `null` is deliberate: a route that forgets to check a returned flag
- * still fails closed, and `withRoute` in `src/server/api.ts` maps the thrown
- * error onto the right status and audit event in one place.
+ * returning `null` is deliberate: a caller that forgets to check a returned
+ * flag still fails closed, and `withRoute` in `src/server/api.ts` maps the
+ * thrown error onto the right status and audit event in one place.
+ *
+ * **These are the authority, not the layouts.** A layout that redirects a
+ * non-admin is a convenience; Next renders layouts and pages independently, so
+ * the data layer (every service function) calls `requirePermission` itself.
  */
 
-/** Subset of `ApiErrorCode` a guard can produce. */
 export type AuthErrorCode = Extract<
   ApiErrorCode,
   "unauthorized" | "forbidden" | "compliance_blocked"
@@ -38,81 +46,77 @@ export class AuthError extends Error {
   }
 }
 
+/**
+ * `cache` dedupes the lookup within one render, so a page and the services it
+ * calls share one query. It is a per-request cache — never across requests.
+ */
+const currentSession = cache(readSession);
+
 /** Non-throwing read, for surfaces that render differently when signed out. */
 export async function getSessionUser(): Promise<SessionUser | null> {
-  const session = await readSession();
-  return session?.user ?? null;
+  return (await currentSession())?.user ?? null;
 }
 
-export async function requireUser(): Promise<SessionUser> {
+export async function getSessionId(): Promise<string | null> {
+  return (await currentSession())?.record.id ?? null;
+}
+
+export interface RequireUserOptions {
+  /**
+   * An account holding an initial or administrator-set password may do exactly
+   * one thing — change it. Only the change-password path passes `true`.
+   */
+  allowPasswordChangePending?: boolean;
+}
+
+export async function requireUser(options: RequireUserOptions = {}): Promise<SessionUser> {
   const user = await getSessionUser();
   if (!user) throw new AuthError("unauthorized", "auth.error.signInRequired");
-  if (user.status === "closed") {
-    throw new AuthError("forbidden", "auth.error.accountClosed");
+  if (user.status === "closed") throw new AuthError("forbidden", "auth.error.accountClosed");
+  if (user.mustChangePassword && !options.allowPasswordChangePending) {
+    throw new AuthError("forbidden", "auth.error.passwordChangeRequired");
   }
   return user;
 }
 
-/**
- * Role check.
- *
- * `admin` is not implicitly granted the other roles: an operator console that
- * lets an administrator act as a trader without that being an explicit,
- * separately-audited grant is how insider odds manipulation stops being
- * traceable. List every role a route accepts.
- */
 export async function requireRole(...roles: readonly UserRole[]): Promise<SessionUser> {
   const user = await requireUser();
-  if (!roles.includes(user.role)) {
+  if (!roles.includes(user.role)) throw new AuthError("forbidden", "auth.error.insufficientRole");
+  return user;
+}
+
+/**
+ * The check every administrative service function starts with: authenticated,
+ * role known from the database, and the role holds this specific permission.
+ */
+export async function requirePermission(permission: Permission): Promise<SessionUser> {
+  const user = await requireUser();
+  if (!can(user.role, "admin.access") || !can(user.role, permission)) {
     throw new AuthError("forbidden", "auth.error.insufficientRole");
   }
   return user;
 }
 
 export async function requireAdmin(): Promise<SessionUser> {
-  return requireRole("admin");
+  return requirePermission("admin.access");
 }
 
 /**
- * Blocks the wagering and deposit paths for an account that must not be able to
- * play.
+ * Blocks wagering and deposits for an account that must not play.
  *
- * **This has to run server-side on every wagering and deposit endpoint.** Hiding
- * the bet slip and greying out the deposit button is presentation; a
- * self-excluded player who is determined to gamble will reach the endpoint
- * directly, and a self-exclusion that only exists in the UI is not a control —
- * it is the failure a regulator asks about first.
+ * **Runs server-side on every wagering and deposit path.** Hiding the bet slip
+ * is presentation; an excluded player who is determined to gamble will reach
+ * the endpoint directly, and a self-exclusion that only exists in the UI is not
+ * a control.
  *
- * Withdrawals are intentionally *not* gated here: an excluded player must
- * always be able to take their balance out. Blocking that would turn a
- * protective measure into a reason to reverse it.
+ * Withdrawals are intentionally not gated here: an excluded player must always
+ * be able to take their balance out.
  */
-export function assertNotSelfExcluded(user: SessionUser): void {
+export function assertCanWager(user: SessionUser): void {
   if (user.status === "self_excluded") {
     throw new AuthError("compliance_blocked", "responsible.error.selfExcluded");
   }
-  if (user.status === "closed") {
-    throw new AuthError("compliance_blocked", "auth.error.accountClosed");
-  }
-  // `restricted` covers a support hold, a pending AML review and an active
-  // cooling-off. All three mean "no new liability on this account".
-  if (user.status === "restricted") {
+  if (user.status !== "active") {
     throw new AuthError("compliance_blocked", "account.error.restricted");
-  }
-}
-
-/**
- * The KYC gate.
- *
- * Never satisfied in this build — `kycStatus` is always `not_started`, because
- * there is no verification provider and inventing one would be worse than
- * having none. Live deployment must call this before the first real wager and
- * before the first real deposit, not merely before the first withdrawal:
- * verifying only on the way out lets an unverified, possibly underage account
- * play first and be checked afterwards.
- */
-export function assertIdentityVerified(user: SessionUser): void {
-  if (user.kycStatus !== "verified") {
-    throw new AuthError("compliance_blocked", "account.error.verificationRequired");
   }
 }

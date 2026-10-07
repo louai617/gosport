@@ -55,6 +55,12 @@
   --color-danger: #e5484d;
   --color-danger-soft: #2b1012;
   --color-info: #5b9dff;
+
+  /* Data-visualisation series — fixed order, validated for colour-vision
+     deficiency (see docs/ARCHITECTURE.md). Never reused for status colours. */
+  --color-chart-1: #3987e5;
+  --color-chart-2: #d95926;
+  --color-chart-3: #199e70;
   --color-info-soft: #0f1a2c;
 
   /* Live pulse */
@@ -319,6 +325,9 @@
     --color-danger: #c22f38;
     --color-danger-soft: #fce9eb;
     --color-info: #1f57d6;
+    --color-chart-1: #2a78d6;
+    --color-chart-2: #eb6834;
+    --color-chart-3: #1baf7a;
     --color-info-soft: #e6edfd;
 
     --color-live: #d02436;

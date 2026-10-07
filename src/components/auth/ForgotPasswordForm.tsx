@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState } from "react";
-import { emptyFormState, forgotPasswordAction } from "@/app/actions/auth";
+import { forgotPasswordAction } from "@/app/actions/auth";
+import { emptyActionState } from "@/lib/actionState";
 import { useT } from "@/i18n/I18nProvider";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -9,10 +10,7 @@ import { FormMessage } from "./FormMessage";
 
 export function ForgotPasswordForm() {
   const t = useT();
-  const [state, formAction, pending] = useActionState(
-    forgotPasswordAction,
-    emptyFormState,
-  );
+  const [state, formAction, pending] = useActionState(forgotPasswordAction, emptyActionState);
 
   return (
     <form action={formAction} className="space-y-4" noValidate>

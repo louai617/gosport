@@ -1,44 +1,19 @@
 import type { Metadata } from "next";
 import { AlertTriangle, CircleCheck, LifeBuoy, ShieldCheck } from "lucide-react";
 import { RESPONSIBLE_GAMBLING, SUPPORT, compliance } from "@/config/app.config";
-import { getResponsibleGamblingLimits } from "@/services/userService";
 import { getT } from "@/i18n/server";
 import { Alert } from "@/components/ui/Alert";
-import { LimitControl } from "@/components/responsible/LimitControl";
-import { BreakControls } from "@/components/responsible/BreakControls";
+import { ResponsibleTools } from "@/components/responsible/ResponsibleTools";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getT();
   return { title: t("responsible.title") };
 }
 
-const LIMIT_COPY: Record<string, { titleKey: string; descriptionKey: string }> = {
-  deposit: {
-    titleKey: "responsible.limits.deposit.title",
-    descriptionKey: "responsible.limits.deposit.body",
-  },
-  stake: {
-    titleKey: "responsible.limits.stake.title",
-    descriptionKey: "responsible.limits.stake.body",
-  },
-  loss: {
-    titleKey: "responsible.limits.loss.title",
-    descriptionKey: "responsible.limits.loss.body",
-  },
-  session_duration: {
-    titleKey: "responsible.limits.session.title",
-    descriptionKey: "responsible.limits.session.body",
-  },
-  single_bet: {
-    titleKey: "responsible.limits.singleBet.title",
-    descriptionKey: "responsible.limits.singleBet.body",
-  },
-};
-
 const WARNING_SIGNS = [1, 2, 3, 4, 5, 6] as const;
 
 export default async function ResponsibleGamblingPage() {
-  const [t, limits] = await Promise.all([getT(), getResponsibleGamblingLimits()]);
+  const t = await getT();
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
@@ -115,23 +90,8 @@ export default async function ResponsibleGamblingPage() {
           {t("responsible.tools.intro")}
         </p>
 
-        <div className="mt-4 space-y-3">
-          {limits.map((limit) => {
-            const copy = LIMIT_COPY[limit.kind];
-            if (!copy) return null;
-            return (
-              <LimitControl
-                key={limit.id}
-                limit={limit}
-                titleKey={copy.titleKey}
-                descriptionKey={copy.descriptionKey}
-              />
-            );
-          })}
-        </div>
-
         <div className="mt-4">
-          <BreakControls />
+          <ResponsibleTools />
         </div>
       </section>
 

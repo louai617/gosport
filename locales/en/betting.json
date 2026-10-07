@@ -49,5 +49,11 @@
   "betting.validation.systemSizeInvalid": "Select a valid system size",
   "betting.validation.tooManySelections": "Too many selections on one slip",
   "betslip.empty.browse": "Browse sports",
-  "betslip.demoNoticeShort": "No money involved — nothing is staked or paid out."
+  "betslip.demoNoticeShort": "No money involved — nothing is staked or paid out.",
+  "betslip.placeFailed": "Bet not placed",
+  "betslip.signInToBet": "Sign in to place a bet",
+  "betting.error.oddsChanged": "Prices have changed. Review your slip and try again.",
+  "betting.error.selectionUnknown": "One of your selections is no longer available",
+  "betting.error.selectionUnavailable": "A selection is suspended or the event has finished",
+  "betting.error.duplicateSelection": "The same selection appears twice"
 }

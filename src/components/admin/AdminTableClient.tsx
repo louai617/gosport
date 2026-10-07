@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { DataTable, type DataTableColumn, type DataTableFilter } from "./DataTable";
@@ -13,6 +14,8 @@ import { DataTable, type DataTableColumn, type DataTableFilter } from "./DataTab
  */
 export interface AdminCell {
   text: string;
+  /** Makes the cell a link — to a player, a transaction. */
+  href?: string;
   sub?: string;
   badge?: { label: string; tone: BadgeTone; dot?: boolean };
 }
@@ -57,7 +60,15 @@ function renderCell(cell: AdminCell | undefined): ReactNode {
           {cell.badge.label}
         </Badge>
       ) : (
-        <span className="block truncate">{cell.text}</span>
+        <span className="block truncate">
+          {cell.href ? (
+            <Link href={cell.href} className="font-medium text-primary underline-offset-2 hover:underline">
+              {cell.text}
+            </Link>
+          ) : (
+            cell.text
+          )}
+        </span>
       )}
       {cell.sub ? (
         <span className="block truncate text-caption normal-case tracking-normal text-ink-subtle">

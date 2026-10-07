@@ -1,52 +1,45 @@
 "use server";
 
-import { limitChangeSchema, selfExclusionSchema } from "@/lib/validation";
+import type { LimitFormState } from "@/lib/actionState";
+import { limitChangeSchema } from "@/lib/validation";
+import { guarded, readBoolean, text } from "@/server/actions";
 import {
   requestCoolingOff,
   requestLimitChange,
   requestSelfExclusion,
-} from "@/services/userService";
-import type { LimitChangeResult } from "@/services/types";
+} from "@/services/responsibleService";
 
 /**
- * Responsible-gambling actions.
- *
- * ── DEMO ──────────────────────────────────────────────────────────────────
- * These change demo state only. In a real deployment every one of them is a
- * server-side control: `assertNotSelfExcluded` must run on every wagering and
- * deposit endpoint, and an exclusion must also be published to the national
- * register. A limit the UI merely displays is not a limit.
- * ──────────────────────────────────────────────────────────────────────────
+ * Responsible-gambling actions. Each is a real, persisted control: a limit is
+ * enforced by the server on every wager (`assertWagerAllowed`), and an
+ * exclusion cannot be ended early by the player or by anyone else.
  */
-
-export interface LimitFormState {
-  ok: boolean;
-  messageKey?: string;
-  effect?: "immediate" | "scheduled";
-  fieldError?: string;
-}
-
-export const emptyLimitState: LimitFormState = { ok: false };
 
 export async function updateLimitAction(
   _previous: LimitFormState,
   formData: FormData,
 ): Promise<LimitFormState> {
-  const parsed = limitChangeSchema.safeParse({
-    kind: formData.get("kind"),
-    period: formData.get("period"),
-    value: Number(formData.get("value")),
+  const state = await guarded("responsible.limit", async () => {
+    const parsed = limitChangeSchema.safeParse({
+      kind: text(formData, "kind"),
+      period: text(formData, "period"),
+      value: Number(text(formData, "value").replace(",", ".")),
+    });
+    if (!parsed.success) {
+      return { ok: false, messageKey: parsed.error.issues[0]?.message ?? "common.validation.invalid" };
+    }
+    const result = await requestLimitChange(parsed.data);
+    return {
+      ok: result.ok,
+      messageKey: result.messageKey,
+      data: { effect: result.effect },
+    };
   });
-
-  if (!parsed.success) {
-    return { ok: false, fieldError: parsed.error.issues[0]?.message };
-  }
-
-  const result: LimitChangeResult = await requestLimitChange(parsed.data);
   return {
-    ok: result.ok,
-    messageKey: result.messageKey,
-    effect: result.effect,
+    ok: state.ok,
+    messageKey: state.messageKey,
+    effect: state.data?.effect as LimitFormState["effect"],
+    fieldError: state.ok ? undefined : state.messageKey,
   };
 }
 
@@ -54,32 +47,26 @@ export async function coolingOffAction(
   _previous: LimitFormState,
   formData: FormData,
 ): Promise<LimitFormState> {
-  const days = Number(formData.get("days"));
-  const result = await requestCoolingOff(days);
-  return { ok: result.ok, messageKey: result.messageKey ?? result.errorKey };
+  const state = await guarded("responsible.coolingOff", async () => {
+    const result = await requestCoolingOff(Number(text(formData, "days")));
+    return { ok: result.ok, messageKey: result.messageKey ?? result.errorKey };
+  });
+  return { ok: state.ok, messageKey: state.messageKey };
 }
 
 export async function selfExclusionAction(
   _previous: LimitFormState,
   formData: FormData,
 ): Promise<LimitFormState> {
-  const raw = formData.get("duration");
-  const duration = raw === "permanent" ? "permanent" : Number(raw);
-
-  const parsed = selfExclusionSchema.safeParse(
-    duration === "permanent"
-      ? { kind: "permanent", acknowledged: formData.get("acknowledged") === "on" }
-      : {
-          kind: "fixed",
-          months: duration,
-          acknowledged: formData.get("acknowledged") === "on",
-        },
-  );
-
-  if (!parsed.success) {
-    return { ok: false, fieldError: parsed.error.issues[0]?.message };
-  }
-
-  const result = await requestSelfExclusion(duration);
-  return { ok: result.ok, messageKey: result.messageKey ?? result.errorKey };
+  const state = await guarded("responsible.selfExclusion", async () => {
+    // The acknowledgement is the point of the form: this cannot be lifted early,
+    // and a mis-tap must not be able to start it.
+    if (!readBoolean(formData.get("acknowledged"))) {
+      return { ok: false, messageKey: "responsible.validation.acknowledgeRequired" };
+    }
+    const raw = text(formData, "duration");
+    const result = await requestSelfExclusion(raw === "permanent" ? "permanent" : Number(raw));
+    return { ok: result.ok, messageKey: result.messageKey ?? result.errorKey };
+  });
+  return { ok: state.ok, messageKey: state.messageKey, fieldError: state.ok ? undefined : state.messageKey };
 }

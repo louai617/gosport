@@ -1,11 +1,11 @@
 "use client";
 
-import type { FormState } from "@/app/actions/auth";
+import type { ActionState } from "@/lib/actionState";
 import { useT } from "@/i18n/I18nProvider";
 import { Alert } from "@/components/ui/Alert";
 
 export interface FormMessageProps {
-  state: FormState;
+  state: ActionState;
 }
 
 /** Renders the form-level outcome. Field errors are shown on the fields. */

@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { AlertTriangle, Receipt, Trash2 } from "lucide-react";
 import { BETTING_RULES, IS_DEMO } from "@/config/app.config";
 import { calculateSlip, systemSizesFor } from "@/lib/betting";
@@ -10,6 +11,7 @@ import { formatAmount, formatOdds } from "@/lib/format";
 import { useHydrated } from "@/lib/useHydrated";
 import { useI18n } from "@/i18n/I18nProvider";
 import { useBetSlipStore } from "@/store/betSlipStore";
+import { newIdempotencyKey, useWallet } from "@/components/wallet/WalletProvider";
 import { useToast } from "@/components/ui/Toast";
 import { Button, buttonStyles } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -25,9 +27,9 @@ export interface BetSlipProps {
   className?: string;
 }
 
-/** Base-36 reference from the placement time — stable, no RNG in render. */
-function referenceFrom(placedAt: number): string {
-  return `SG-${placedAt.toString(36).slice(-6).toUpperCase()}`;
+interface PlaceResponse {
+  tickets: Array<{ reference: string; stake: number }>;
+  balance: number;
 }
 
 export function BetSlip({ showHeader = true, className }: BetSlipProps) {
@@ -47,7 +49,18 @@ export function BetSlip({ showHeader = true, className }: BetSlipProps) {
   const setSystemSize = useBetSlipStore((state) => state.setSystemSize);
   const remove = useBetSlipStore((state) => state.remove);
   const clear = useBetSlipStore((state) => state.clear);
-  const place = useBetSlipStore((state) => state.place);
+  const clearAfterPlacement = useBetSlipStore((state) => state.clearAfterPlacement);
+  const acceptOddsChanges = useBetSlipStore((state) => state.acceptOddsChanges);
+
+  const router = useRouter();
+  const pathname = usePathname();
+  const { request, applyBalance, signedIn, ready } = useWallet();
+  const [placing, setPlacing] = useState(false);
+
+  // One key per distinct slip: a double-click or a retry after a dropped
+  // connection re-sends the *same* key, so the server books one ticket. Any edit
+  // to the slip is a different request and gets a new key.
+  const idempotencyKey = useRef<string | null>(null);
 
   // Selecting primitives and deriving here keeps the store from handing back a
   // fresh object on every render, which would re-render this tree forever.
@@ -55,6 +68,10 @@ export function BetSlip({ showHeader = true, className }: BetSlipProps) {
     () => calculateSlip({ items, mode, sharedStake, systemSize }),
     [items, mode, sharedStake, systemSize],
   );
+
+  useEffect(() => {
+    idempotencyKey.current = null;
+  }, [items, mode, sharedStake, systemSize]);
 
   const modes = useMemo(
     () => [
@@ -86,17 +103,55 @@ export function BetSlip({ showHeader = true, className }: BetSlipProps) {
   const isEmpty = items.length === 0;
   const canPlace = calculation.errorKeys.length === 0 && !isEmpty;
 
-  const handlePlace = () => {
-    const placedAt = Date.now();
-    const ticket = place(referenceFrom(placedAt), new Date(placedAt).toISOString());
-    if (!ticket) return;
+  const handlePlace = async () => {
+    if (placing || !canPlace) return;
+    setPlacing(true);
+    idempotencyKey.current ??= newIdempotencyKey();
 
+    // The server prices the ticket from its own book; what is sent is *which*
+    // selections, the price the player saw, and the stake — nothing else.
+    const outcome = await request<PlaceResponse>("/api/bets", {
+      mode,
+      selections: items
+        .filter((item) => !item.suspended)
+        .map((item) => ({
+          selectionId: item.selectionId,
+          marketId: item.marketId,
+          eventId: item.eventId,
+          odds: item.odds,
+          ...(mode === "single" ? { stake: item.stake } : {}),
+        })),
+      ...(mode === "single" ? {} : { stake: sharedStake }),
+      ...(mode === "system" ? { systemSize } : {}),
+      acceptOddsChange: acceptOddsChanges,
+      idempotencyKey: idempotencyKey.current,
+    });
+    setPlacing(false);
+
+    if (!outcome.ok || !outcome.data) {
+      toast({
+        tone: "danger",
+        title: t("betslip.placeFailed"),
+        description: t(outcome.errorKey ?? "error.generic"),
+      });
+      return;
+    }
+
+    idempotencyKey.current = null;
+    applyBalance(outcome.data.balance);
+    clearAfterPlacement();
+    router.refresh();
+
+    const tickets = outcome.data.tickets;
     toast({
       tone: "success",
       title: t("betslip.placed.title"),
       description: t("betslip.placed.description", {
-        reference: ticket.reference,
-        stake: formatAmount(ticket.totalStake, locale),
+        reference: tickets.map((ticket) => ticket.reference).join(", "),
+        stake: formatAmount(
+          tickets.reduce((sum, ticket) => sum + ticket.stake, 0),
+          locale,
+        ),
       }),
     });
   };
@@ -279,9 +334,18 @@ export function BetSlip({ showHeader = true, className }: BetSlipProps) {
               </p>
             ) : null}
 
-            <Button fullWidth disabled={!canPlace} onClick={handlePlace}>
-              {t("betslip.placeSimulated")}
-            </Button>
+            {ready && !signedIn ? (
+              <Link
+                href={`/login?next=${encodeURIComponent(pathname)}`}
+                className={buttonStyles({ fullWidth: true })}
+              >
+                {t("betslip.signInToBet")}
+              </Link>
+            ) : (
+              <Button fullWidth disabled={!canPlace || !ready} loading={placing} onClick={handlePlace}>
+                {t("betslip.placeSimulated")}
+              </Button>
+            )}
 
           </div>
         </>

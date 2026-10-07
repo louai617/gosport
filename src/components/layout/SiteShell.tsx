@@ -1,5 +1,6 @@
-import { getCurrentUser, getNotifications } from "@/services/userService";
-import { getWallet } from "@/services/paymentService";
+import { getCurrentUser } from "@/services/userService";
+import { getNotifications } from "@/services/notificationService";
+import { walletSnapshot } from "@/services/paymentService";
 import { getSports } from "@/services/sportsService";
 import { getT } from "@/i18n/server";
 import { DemoBanner } from "./DemoBanner";
@@ -20,15 +21,17 @@ export interface SiteShellProps {
  * them opening its own request.
  */
 export async function SiteShell({ showSportsNav = false, children }: SiteShellProps) {
-  const [t, sports, notifications, user, wallet] = await Promise.all([
-    getT(),
-    getSports(),
-    getNotifications(),
-    getCurrentUser(),
-    // The one balance in the product — `paymentService` owns it, the header
-    // only displays it. No second source of truth is introduced here.
-    getWallet(),
-  ]);
+  const [t, sports, user] = await Promise.all([getT(), getSports(), getCurrentUser()]);
+
+  // Everything below is the signed-in player's own data, read with their id from
+  // the session. A guest gets none of it — and an administrator has no wallet.
+  // The balance has one owner, `paymentService`; the header only displays it.
+  const [notifications, wallet] = user
+    ? await Promise.all([
+        getNotifications({ limit: 10 }),
+        user.role === "player" ? walletSnapshot(user.id) : Promise.resolve(null),
+      ])
+    : [[], null];
 
   return (
     <div className="flex min-h-dvh flex-col">

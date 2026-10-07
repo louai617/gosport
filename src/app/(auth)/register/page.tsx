@@ -3,6 +3,10 @@ import Link from "next/link";
 import { getT } from "@/i18n/server";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { RegisterForm } from "@/components/auth/RegisterForm";
+import { Alert } from "@/components/ui/Alert";
+import { getSetting } from "@/server/settings/settingsService";
+import { getSessionUser } from "@/server/auth/guard";
+import { redirect } from "next/navigation";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getT();
@@ -10,7 +14,12 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function RegisterPage() {
-  const t = await getT();
+  const [t, registrationOpen, user] = await Promise.all([
+    getT(),
+    getSetting("players.registrationEnabled"),
+    getSessionUser(),
+  ]);
+  if (user) redirect(user.role === "admin" ? "/admin" : "/account");
 
   return (
     <AuthShell
@@ -28,7 +37,13 @@ export default async function RegisterPage() {
         </>
       }
     >
-      <RegisterForm />
+      {registrationOpen ? (
+        <RegisterForm />
+      ) : (
+        <Alert tone="info" title={t("auth.register.closed")}>
+          {t("auth.register.closedBody")}
+        </Alert>
+      )}
     </AuthShell>
   );
 }

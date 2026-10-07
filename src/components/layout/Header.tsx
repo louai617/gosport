@@ -23,7 +23,8 @@ export interface HeaderProps {
   notifications: AppNotification[];
   /** Null when signed out; the header swaps its right side accordingly. */
   user: SessionUser | null;
-  wallet: Wallet;
+  /** Null for guests and for administrators, who have no wallet. */
+  wallet: Wallet | null;
 }
 
 const NAV = [
@@ -102,14 +103,14 @@ export function Header({ sports, notifications, user, wallet }: HeaderProps) {
               width shrinks; every one of them also lives in the account menu
               or the mobile drawer, so nothing becomes unreachable. */}
           <div className="ms-auto flex items-center gap-1 md:ms-0">
-            {user ? (
+            {user && wallet ? (
               <BalanceDisplay
                 balance={wallet.balance}
                 className="me-1 hidden md:flex"
               />
             ) : null}
 
-            <NotificationDropdown notifications={notifications} />
+            {user ? <NotificationDropdown notifications={notifications} /> : null}
 
             {!user ? (
               <Link

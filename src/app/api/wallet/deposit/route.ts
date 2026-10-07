@@ -5,10 +5,11 @@ import { demoBlocked, ok, withRoute } from "@/server/api";
 /**
  * POST /api/wallet/deposit
  *
- * Refuses. No payment provider is integrated, and reporting a successful
- * deposit that did not happen is the single most misleading thing this
- * demonstration could do. The validation, auth, CSRF and rate-limit path in
- * front of it is real, so the eventual handler drops in behind it unchanged.
+ * Refuses. No payment provider is integrated, and reporting a deposit that
+ * moved no real money would be the single most misleading thing this platform
+ * could do. Credit is added by an operator (admin console → player → wallet).
+ * The auth, CSRF, validation and rate-limit path in front of this is real, so a
+ * provider-backed handler drops in behind it unchanged.
  */
 export const POST = withRoute(
   async ({ input }) => {
@@ -18,10 +19,5 @@ export const POST = withRoute(
     }
     return ok(result);
   },
-  {
-    schema: depositSchema,
-    auth: "user",
-    rateLimit: "deposit",
-    audit: "wallet.deposit_initiated",
-  },
+  { schema: depositSchema, auth: "user", rateLimit: "deposit" },
 );

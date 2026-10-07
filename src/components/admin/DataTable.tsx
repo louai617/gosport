@@ -40,6 +40,15 @@ export interface DataTableFilter {
   value?: string;
 }
 
+/** A free-form filter: a date, a number or a short text, written to the URL on commit. */
+export interface DataTableInput {
+  param: string;
+  label: string;
+  type: "date" | "number" | "text";
+  value?: string;
+  placeholder?: string;
+}
+
 export interface DataTableProps<Row> {
   /** Base path the table pushes query changes to, e.g. `/admin/users`. */
   basePath: string;
@@ -47,6 +56,9 @@ export interface DataTableProps<Row> {
   data: Paginated<Row>;
   rowKey: (row: Row) => string;
   filters?: DataTableFilter[];
+  inputs?: DataTableInput[];
+  /** Right-aligned slot in the filter bar, e.g. an export button. */
+  toolbar?: ReactNode;
   searchPlaceholder?: string;
   searchValue?: string;
   sort?: string;
@@ -68,6 +80,8 @@ export function DataTable<Row>({
   data,
   rowKey,
   filters = [],
+  inputs = [],
+  toolbar,
   searchPlaceholder,
   searchValue = "",
   sort,
@@ -129,13 +143,44 @@ export function DataTable<Row>({
               label={filter.label}
               value={filter.value ?? ""}
               onChange={(event) => setParam(filter.param, event.target.value)}
-              placeholder={t("admin.filter.all")}
-              options={filter.options}
+              options={[{ value: "", label: t("admin.filter.all") }, ...filter.options]}
             />
           </div>
         ))}
 
-        {filters.length > 0 || searchValue ? (
+        {inputs.map((input) => (
+          <div key={`${input.param}:${input.value ?? ""}`} className={input.type === "date" ? "w-40" : "w-32"}>
+            <Input
+              label={input.label}
+              type={input.type}
+              inputMode={input.type === "number" ? "decimal" : undefined}
+              defaultValue={input.value ?? ""}
+              placeholder={input.placeholder}
+              // Dates commit as soon as one is picked; numbers and text wait for
+              // blur or Enter so typing "1500" does not fire four navigations.
+              onChange={input.type === "date" ? (event) => setParam(input.param, event.target.value) : undefined}
+              onBlur={
+                input.type !== "date"
+                  ? (event) => {
+                      const next = event.target.value.trim();
+                      if (next !== (input.value ?? "")) setParam(input.param, next);
+                    }
+                  : undefined
+              }
+              onKeyDown={
+                input.type !== "date"
+                  ? (event) => {
+                      if (event.key === "Enter") setParam(input.param, event.currentTarget.value.trim());
+                    }
+                  : undefined
+              }
+            />
+          </div>
+        ))}
+
+        {toolbar ? <div className="ms-auto flex items-end gap-2">{toolbar}</div> : null}
+
+        {filters.length > 0 || inputs.length > 0 || searchValue ? (
           <button
             type="button"
             onClick={() => router.push(basePath)}

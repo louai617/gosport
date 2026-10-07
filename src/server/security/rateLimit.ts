@@ -1,3 +1,4 @@
+import { prisma } from "@/server/db";
 import { hashIp, sha256Hex } from "@/server/security/sanitize";
 
 /**
@@ -29,26 +30,29 @@ export interface RateLimiter {
 export interface RateLimitPolicy {
   limit: number;
   windowSeconds: number;
+  /**
+   * `db` for anything guarding sign-in or money: a serverless deployment has no
+   * shared memory, so a per-process counter would give an attacker N × the limit.
+   * `memory` for cheap, high-volume reads where best-effort is enough.
+   */
+  store: "db" | "memory";
 }
 
 /**
- * Numbers chosen so a real person never notices and a script always does.
- *
- * `login` is the tightest because it protects a credential, and it is keyed by
- * IP *and* by account elsewhere in the flow — an attacker spraying one password
- * across many accounts is invisible to a per-account counter alone.
+ * Per-route budgets. Deliberately conservative for the credential paths — five
+ * failed sign-ins per five minutes per address — because a memory-hard hash
+ * makes online guessing slow, not impossible.
  */
 export const RATE_LIMITS = {
-  login: { limit: 5, windowSeconds: 300 },
-  register: { limit: 5, windowSeconds: 3600 },
-  passwordReset: { limit: 3, windowSeconds: 3600 },
-  /** Generous per minute, because a slip can be placed line by line. */
-  betPlacement: { limit: 30, windowSeconds: 60 },
-  deposit: { limit: 10, windowSeconds: 3600 },
-  /** Search is cheap per call but the classic scraping surface. */
-  search: { limit: 60, windowSeconds: 60 },
-  /** Catch-all for read endpoints. */
-  api: { limit: 120, windowSeconds: 60 },
+  login: { limit: 10, windowSeconds: 300, store: "db" },
+  register: { limit: 5, windowSeconds: 3600, store: "db" },
+  passwordReset: { limit: 5, windowSeconds: 3600, store: "db" },
+  password: { limit: 10, windowSeconds: 900, store: "db" },
+  betPlacement: { limit: 120, windowSeconds: 60, store: "memory" },
+  deposit: { limit: 10, windowSeconds: 3600, store: "db" },
+  admin: { limit: 240, windowSeconds: 60, store: "memory" },
+  search: { limit: 60, windowSeconds: 60, store: "memory" },
+  api: { limit: 240, windowSeconds: 60, store: "memory" },
 } as const satisfies Record<string, RateLimitPolicy>;
 
 export type RateLimitPolicyName = keyof typeof RATE_LIMITS;
@@ -145,7 +149,100 @@ export function createMemoryRateLimiter(): RateLimiter {
  * gives the same sliding window atomically across the fleet. Nothing else in
  * the codebase changes: routes only ever see the interface.
  */
-export const rateLimiter: RateLimiter = createMemoryRateLimiter();
+export const memoryRateLimiter: RateLimiter = createMemoryRateLimiter();
+
+/* --------------------------------------------------------- database limiter */
+
+/**
+ * Fixed-window counter in the database.
+ *
+ * The increment is a single conditional UPDATE, so two concurrent requests
+ * cannot both read "4" and both write "5". When no live window exists the row
+ * is (re)created; losing that race to another request just means retrying the
+ * increment once.
+ */
+export function createDatabaseRateLimiter(): RateLimiter {
+  return {
+    async check(key, limit, windowSeconds): Promise<RateLimitResult> {
+      const windowMs = windowSeconds * 1000;
+
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const now = new Date();
+
+        const bumped = await prisma.rateLimitCounter.updateMany({
+          where: { key, expiresAt: { gt: now }, count: { lt: limit } },
+          data: { count: { increment: 1 } },
+        });
+
+        if (bumped.count === 1) {
+          const row = await prisma.rateLimitCounter.findUnique({ where: { key } });
+          const count = row?.count ?? 1;
+          return {
+            allowed: true,
+            limit,
+            remaining: Math.max(0, limit - count),
+            resetAt: row?.expiresAt.getTime() ?? now.getTime() + windowMs,
+            retryAfterSeconds: 0,
+          };
+        }
+
+        const row = await prisma.rateLimitCounter.findUnique({ where: { key } });
+
+        if (row && row.expiresAt > now) {
+          // A live window that is already full.
+          return {
+            allowed: false,
+            limit,
+            remaining: 0,
+            resetAt: row.expiresAt.getTime(),
+            retryAfterSeconds: Math.max(1, Math.ceil((row.expiresAt.getTime() - now.getTime()) / 1000)),
+          };
+        }
+
+        // No live window: start a new one. A concurrent request may beat us to
+        // it, in which case the next loop iteration increments theirs.
+        try {
+          const expiresAt = new Date(now.getTime() + windowMs);
+          await prisma.rateLimitCounter.upsert({
+            where: { key },
+            create: { key, count: 1, windowStart: now, expiresAt },
+            update: { count: 1, windowStart: now, expiresAt },
+          });
+          if (Math.random() < 0.02) {
+            // Housekeeping, amortised: drop windows that ended over an hour ago.
+            void prisma.rateLimitCounter
+              .deleteMany({ where: { expiresAt: { lt: new Date(now.getTime() - 3_600_000) } } })
+              .catch(() => undefined);
+          }
+          return {
+            allowed: true,
+            limit,
+            remaining: limit - 1,
+            resetAt: expiresAt.getTime(),
+            retryAfterSeconds: 0,
+          };
+        } catch {
+          // lost the race — retry the increment
+        }
+      }
+
+      // Could not settle after retries: fail closed.
+      return {
+        allowed: false,
+        limit,
+        remaining: 0,
+        resetAt: Date.now() + windowMs,
+        retryAfterSeconds: windowSeconds,
+      };
+    },
+  };
+}
+
+export const databaseRateLimiter: RateLimiter = createDatabaseRateLimiter();
+
+export function limiterFor(policy: RateLimitPolicy): RateLimiter {
+  return policy.store === "db" ? databaseRateLimiter : memoryRateLimiter;
+}
 
 /* ------------------------------------------------------------------- keys */
 

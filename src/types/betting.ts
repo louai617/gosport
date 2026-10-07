@@ -62,10 +62,14 @@ export type BetStatus = "pending" | "won" | "lost" | "cancelled" | "cashed_out" 
 
 export interface BetSelectionRecord {
   id: string;
+  eventId?: string;
   eventLabel: string;
   competitionLabel: string;
   marketNameKey: string;
+  marketLine?: number;
+  /** A proper noun, or an i18n key when `selectionLabelKey` is set. */
   selectionLabel: string;
+  selectionLabelKey?: string;
   odds: number;
   status: BetStatus;
   startTime: string;
@@ -76,6 +80,11 @@ export interface Bet {
   /** Short human reference shown in the UI, e.g. `SG-4F2A19`. */
   reference: string;
   userId: string;
+  /** A sportsbook ticket or a casino round. */
+  kind: "sports" | "casino";
+  /** Casino only: slots, blackjack, roulette, … */
+  gameKey?: string;
+  systemSize?: number;
   mode: BetSlipMode;
   selections: BetSelectionRecord[];
   stake: number;

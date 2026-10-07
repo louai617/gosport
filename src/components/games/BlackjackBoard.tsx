@@ -8,7 +8,7 @@ import { GAME_STAKE, round2 } from "@/lib/games/constants";
 import { useI18n } from "@/i18n/I18nProvider";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { useCasinoWallet } from "./CasinoWalletProvider";
+import { useWallet } from "@/components/wallet/WalletProvider";
 
 const SUIT_GLYPH: Record<Suit, string> = {
   spades: "♠",
@@ -27,7 +27,7 @@ const RESULT_TONE: Record<HandResult, BadgeTone> = {
 
 export function BlackjackBoard() {
   const { t, locale } = useI18n();
-  const { balance, ready, play, act } = useCasinoWallet();
+  const { balance, ready, play, act } = useWallet();
 
   const [stake, setStake] = useState(5);
   const [view, setView] = useState<BlackjackView | null>(null);

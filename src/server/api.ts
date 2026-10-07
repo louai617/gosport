@@ -3,7 +3,8 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 
 import { toFieldErrors } from "@/lib/validation";
-import { AuthError, getSessionUser, requireAdmin, requireUser } from "@/server/auth/guard";
+import { AuthError, getSessionUser, requirePermission, requireUser } from "@/server/auth/guard";
+import type { Permission } from "@/server/auth/permissions";
 import { env, isDemo } from "@/server/env";
 import { audit, type AuditAction } from "@/server/security/audit";
 import { CSRF_FIELD, isUnsafeMethod, verifyCsrfToken } from "@/server/security/csrf";
@@ -11,7 +12,7 @@ import {
   RATE_LIMITS,
   clientIp,
   rateLimitKey,
-  rateLimiter,
+  limiterFor,
   type RateLimitPolicyName,
   type RateLimitResult,
 } from "@/server/security/rateLimit";
@@ -238,6 +239,10 @@ export interface RouteOptions<S extends z.ZodType | undefined, A extends RouteAu
   /** Validates the JSON/form body, or the query string on GET and DELETE. */
   schema?: S;
   auth?: A;
+  /** With `auth: "admin"`: the specific permission the route needs. */
+  permission?: Permission;
+  /** Only the change-password path may be called while a password change is pending. */
+  allowPasswordChangePending?: boolean;
   rateLimit?: RateLimitPolicyName;
   /**
    * Defaults to `true` for state-changing methods. Set `false` only for an
@@ -315,7 +320,7 @@ export function withRoute<
     const ipHash = hashIp(clientIp(request));
     const userAgent = request.headers.get("user-agent");
     const method = request.method.toUpperCase();
-    const auditBase = { requestId: id, ipHash, userAgent };
+    const auditBase = { requestId: id, ip: clientIp(request) || null, userAgent };
 
     let headers: Record<string, string> = { "x-request-id": id };
 
@@ -323,7 +328,7 @@ export function withRoute<
       /* 1 — rate limit */
       if (options.rateLimit) {
         const policy = RATE_LIMITS[options.rateLimit];
-        const result = await rateLimiter.check(
+        const result = await limiterFor(policy).check(
           rateLimitKey(request, options.rateLimit),
           policy.limit,
           policy.windowSeconds,
@@ -365,9 +370,11 @@ export function withRoute<
       /* 4 — authentication */
       const user: SessionUser | null =
         options.auth === "admin"
-          ? await requireAdmin()
+          ? await requirePermission(options.permission ?? "admin.access")
           : options.auth === "user"
-            ? await requireUser()
+            ? await requireUser({
+                allowPasswordChangePending: options.allowPasswordChangePending,
+              })
             : await getSessionUser();
 
       /* 5 — validation */
@@ -422,7 +429,7 @@ export function withRoute<
 interface ErrorContext {
   id: string;
   headers: Record<string, string>;
-  auditBase: { requestId: string; ipHash: string; userAgent: string | null };
+  auditBase: { requestId: string; ip: string | null; userAgent: string | null };
   request: Request;
 }
 
@@ -438,11 +445,17 @@ async function handleRouteError(error: unknown, context: ErrorContext): Promise<
   const { id, headers, auditBase, request } = context;
 
   if (error instanceof AuthError) {
+    // Who tried matters most for a refusal: a signed-in player calling an admin
+    // endpoint is exactly the event an investigator is looking for.
+    const caller = await getSessionUser().catch(() => null);
+    const path = new URL(request.url).pathname;
     await audit({
       ...auditBase,
       action: error.code === "unauthorized" ? "security.unauthorized" : "security.forbidden",
       outcome: "blocked",
-      metadata: { path: new URL(request.url).pathname, reason: error.messageKey },
+      actor: caller ? { id: caller.id, role: caller.role } : null,
+      description: `Blocked ${request.method} ${path}: ${error.messageKey}`,
+      metadata: { path, reason: error.messageKey },
     });
     return fail(error.code, error.messageKey, { requestId: id, headers });
   }

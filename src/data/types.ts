@@ -1,25 +1,19 @@
 import type {
-  AppNotification,
-  Bet,
   Competition,
   Country,
-  Favorite,
   Market,
   PaymentMethod,
   Promotion,
-  ResponsibleGamblingLimit,
   Selection,
-  SelfExclusion,
   Sport,
   SportEvent,
   Team,
-  Transaction,
-  User,
-  Wallet,
 } from "@/types";
 
 /**
- * The shape of the in-memory demo dataset.
+ * The shape of the generated sportsbook dataset: sports, fixtures, markets,
+ * prices, promotions and payment-method definitions. Player data — accounts,
+ * wallets, bets, transactions — is *not* here; it lives in the database.
  *
  * This is the seam between the mock data generator (`src/data/*`) and the
  * service layer (`src/services/*`). Swapping in a real sportsbook feed means
@@ -39,17 +33,4 @@ export interface MockDataset {
 
   promotions: Promotion[];
   paymentMethods: PaymentMethod[];
-
-  /** The signed-in player used by every account/wallet screen in demo mode. */
-  demoUser: User;
-  wallet: Wallet;
-  bets: Bet[];
-  transactions: Transaction[];
-  notifications: AppNotification[];
-  favorites: Favorite[];
-  limits: ResponsibleGamblingLimit[];
-  exclusions: SelfExclusion[];
-
-  /** Population used only by the admin dashboard tables. */
-  adminUsers: User[];
 }

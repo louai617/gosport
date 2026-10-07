@@ -7,6 +7,7 @@
  */
 
 export type PaymentMethodKind =
+  | "manual"
   | "card"
   | "bank_transfer"
   | "mobile_money"
@@ -39,19 +40,15 @@ export interface PaymentMethod {
 export type TransactionKind =
   | "deposit"
   | "withdrawal"
-  | "bet_stake"
-  | "bet_payout"
-  | "bonus"
+  | "bet"
+  | "win"
   | "refund"
+  | "bonus"
+  | "admin_credit"
+  | "admin_debit"
   | "adjustment";
 
-export type TransactionStatus =
-  | "pending"
-  | "processing"
-  | "completed"
-  | "failed"
-  | "cancelled"
-  | "reversed";
+export type TransactionStatus = "pending" | "completed" | "failed" | "cancelled" | "reversed";
 
 export interface Transaction {
   id: string;
@@ -59,28 +56,44 @@ export interface Transaction {
   userId: string;
   kind: TransactionKind;
   status: TransactionStatus;
-  /** Positive for credits, negative for debits. */
+  /** TND, signed: positive for credits, negative for debits. */
   amount: number;
   currency: string;
-  /** Wallet balance after this entry — sandbox ledger only. */
+  balanceBefore: number;
   balanceAfter: number;
-  methodId?: string;
-  descriptionKey: string;
+  /** i18n key + params when the entry is system-described; otherwise `description`. */
+  descriptionKey?: string;
   params?: Record<string, string | number>;
+  description: string | null;
+  /** Receipt / external reference supplied with the entry. Visible to the player. */
+  externalReference: string | null;
+  /** Reference of the bet or round the entry belongs to. */
+  betReference: string | null;
   createdAt: string;
+  /** When a pending entry reached its final status. */
   completedAt: string | null;
-  /** Always true in this build. */
+  /** True while the platform runs on credits rather than real money. */
   simulated: boolean;
+}
+
+/**
+ * What only an operator sees: who the entry belongs to, who caused it, and the
+ * internal reason. The player-facing mapper never produces these fields.
+ */
+export interface AdminTransaction extends Transaction {
+  username: string;
+  createdByUsername: string | null;
+  reason: string | null;
 }
 
 export interface Wallet {
   userId: string;
   currency: string;
-  /** Sandbox balance. Not money. */
+  /** Available to wager or withdraw. */
   balance: number;
-  /** Held by open bets. */
+  /** Already deducted from `balance` and held: open stakes and pending withdrawals. */
   reserved: number;
-  /** Withdrawable = balance - reserved - unmetBonusWagering. */
+  /** Withdrawable now. */
   withdrawable: number;
   bonusBalance: number;
   updatedAt: string;

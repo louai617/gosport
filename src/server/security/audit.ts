@@ -1,15 +1,33 @@
-import { env, isDemo, piiHashSalt } from "@/server/env";
-import { sha256Hex } from "@/server/security/sanitize";
+import "server-only";
+
+import { headers } from "next/headers";
+
+import { prisma, type DbClient } from "@/server/db";
+import { env, isDemo } from "@/server/env";
+import { redact } from "@/server/security/redact";
 import type { UserRole } from "@/types/user";
+
+export { redact, hashEmail, maskPhone } from "@/server/security/redact";
 
 /**
  * Audit trail.
  *
  * A regulator does not ask whether the product worked; it asks who did what,
  * when, from where, and whether the record could have been altered afterwards.
- * Everything that touches money, odds, a limit or an account state must land
- * here — and the record must be useful without being a second copy of the
- * player database, hence `redact()`.
+ *
+ * Two sinks, deliberately:
+ *
+ *  - **stdout** — every event, as one JSON line, for log aggregation.
+ *  - **the `AuditLog` table** — events worth investigating later (see
+ *    `PERSISTED_PREFIXES`). The table is immutable at the database level: a
+ *    trigger rejects UPDATE and DELETE, so "normal administrators cannot edit
+ *    or delete audit records" holds even for someone with SQL access through
+ *    the application's own role.
+ *
+ * Money-moving and account-state changes pass `tx`, so the audit row is written
+ * **in the same database transaction as the change itself**. If the audit write
+ * fails, the change rolls back: there is no such thing as an unaudited balance
+ * movement. Informational events (a failed sign-in) are best-effort instead.
  */
 
 export type AuditAction =
@@ -18,42 +36,47 @@ export type AuditAction =
   | "auth.login"
   | "auth.login_failed"
   | "auth.logout"
+  | "auth.account_locked"
   | "auth.password_reset_requested"
   | "auth.password_reset_completed"
   | "auth.password_changed"
-  | "auth.session_rotated"
   | "auth.session_revoked"
-  /* wagering */
+  /* player self-service */
+  | "player.profile_updated"
+  /* wagering (the ledger is the record; these are the operational events) */
   | "bet.placed"
   | "bet.rejected"
   | "bet.settled"
   | "bet.voided"
-  | "bet.cashed_out"
   /* wallet */
-  | "wallet.deposit_initiated"
-  | "wallet.deposit_completed"
-  | "wallet.deposit_failed"
   | "wallet.withdrawal_requested"
-  | "wallet.withdrawal_approved"
-  | "wallet.withdrawal_rejected"
-  | "wallet.adjustment"
   /* responsible gambling */
   | "limit.created"
   | "limit.decreased"
   | "limit.increase_scheduled"
-  | "limit.increase_applied"
-  | "limit.breached"
   | "exclusion.cooling_off_started"
   | "exclusion.self_exclusion_started"
-  | "exclusion.blocked_action"
-  | "exclusion.expired"
   /* operator */
-  | "admin.user_viewed"
-  | "admin.user_status_changed"
-  | "admin.role_changed"
-  | "admin.odds_overridden"
-  | "admin.bet_settled_manually"
-  | "admin.export_generated"
+  | "admin.player.created"
+  | "admin.player.updated"
+  | "admin.player.suspended"
+  | "admin.player.reactivated"
+  | "admin.player.locked"
+  | "admin.player.unlocked"
+  | "admin.player.restrictions_changed"
+  | "admin.player.verification_changed"
+  | "admin.player.sessions_revoked"
+  | "admin.player.invitation_created"
+  | "admin.player.reset_link_created"
+  | "admin.wallet.adjusted"
+  | "admin.wallet.adjustment_requested"
+  | "admin.wallet.adjustment_approved"
+  | "admin.wallet.adjustment_rejected"
+  | "admin.withdrawal.approved"
+  | "admin.withdrawal.rejected"
+  | "admin.bet.settled"
+  | "admin.settings.updated"
+  | "admin.report.exported"
   /* platform */
   | "security.rate_limited"
   | "security.csrf_rejected"
@@ -62,201 +85,223 @@ export type AuditAction =
   | "system.error";
 
 export type AuditOutcome = "success" | "failure" | "blocked";
+export type AuditSeverity = "info" | "warning" | "critical";
+
+/** Actions that deserve more than "info" by default. */
+const SEVERITY: Partial<Record<AuditAction, AuditSeverity>> = {
+  "auth.login_failed": "warning",
+  "auth.account_locked": "warning",
+  "auth.password_changed": "warning",
+  "auth.password_reset_completed": "warning",
+  "auth.session_revoked": "warning",
+  "admin.player.suspended": "warning",
+  "admin.player.locked": "warning",
+  "admin.player.restrictions_changed": "warning",
+  "admin.player.verification_changed": "warning",
+  "admin.player.sessions_revoked": "warning",
+  "admin.player.invitation_created": "warning",
+  "admin.withdrawal.rejected": "warning",
+  "admin.wallet.adjustment_rejected": "warning",
+  "admin.settings.updated": "warning",
+  "admin.report.exported": "warning",
+  "security.csrf_rejected": "warning",
+  "security.forbidden": "warning",
+  "security.rate_limited": "warning",
+  "security.unauthorized": "warning",
+  "admin.wallet.adjusted": "critical",
+  "admin.wallet.adjustment_approved": "critical",
+  "admin.withdrawal.approved": "critical",
+  "admin.player.reset_link_created": "critical",
+  "admin.bet.settled": "critical",
+  "system.error": "critical",
+};
+
+/**
+ * What is persisted. Wager placement and rejected requests are high-volume and
+ * already recorded by the ledger; probing noise (`unauthorized`, `rate_limited`)
+ * would let an anonymous caller fill the table, so it stays on stdout only.
+ */
+const PERSISTED_PREFIXES = [
+  "auth.",
+  "player.",
+  "admin.",
+  "limit.",
+  "exclusion.",
+  "wallet.",
+  "bet.settled",
+  "bet.voided",
+  "security.forbidden",
+  "security.csrf_rejected",
+  "system.error",
+] as const;
+
+export function isPersisted(action: AuditAction): boolean {
+  return PERSISTED_PREFIXES.some((prefix) => action.startsWith(prefix));
+}
+
+export interface AuditActor {
+  id: string;
+  role: UserRole;
+}
 
 export interface AuditEvent {
   action: AuditAction;
-  outcome: AuditOutcome;
+  /** Defaults to `success`. */
+  outcome?: AuditOutcome;
+  severity?: AuditSeverity;
+  /** Human-readable summary, in English — this is an internal record. */
+  description?: string;
   /** Who performed it. Absent for anonymous and system events. */
+  actor?: AuditActor | null;
+  /** Legacy shape accepted from `withRoute`. */
   actorId?: string | null;
   actorRole?: UserRole | null;
-  /** What it was performed on — a user, a bet, a transaction. */
-  subjectId?: string | null;
-  subjectType?: string | null;
+  /** The player the action concerned. */
+  targetUserId?: string | null;
+  targetType?: string | null;
+  targetId?: string | null;
+  transactionId?: string | null;
   requestId?: string | null;
-  /** Already hashed by `hashIp` before it reaches here. */
-  ipHash?: string | null;
+  ip?: string | null;
   userAgent?: string | null;
   /** Free-form context. Passed through `redact()` without exception. */
   metadata?: Record<string, unknown>;
+  /** Write inside the caller's transaction so the audit row commits atomically. */
+  tx?: DbClient;
 }
 
-/** What actually lands in the sink. */
-export interface AuditRecord extends Omit<AuditEvent, "metadata"> {
-  at: string;
-  mode: "demo" | "live";
-  metadata?: Record<string, unknown>;
-}
-
-/* ------------------------------------------------------------- redaction */
-
-/** Field names whose value is never useful and always dangerous in a log. */
-const SECRET_KEY_PATTERN =
-  /(pass(word)?|secret|token|api[_-]?key|authorization|cookie|session|csrf|otp|pin|cvv|cvc|pan|iban|card|signature|private)/i;
-
-const EMAIL_KEY_PATTERN = /email/i;
-const PHONE_KEY_PATTERN = /phone|msisdn|mobile/i;
-
-const REDACTED = "[redacted]";
-const MAX_DEPTH = 6;
-const MAX_ARRAY_ITEMS = 50;
-const MAX_STRING_LENGTH = 512;
-
-/**
- * Deterministic pseudonym for an email address.
- *
- * An investigator needs to correlate events for one account without the log
- * itself becoming a mailing list; a salted digest gives correlation and nothing
- * else. Support looks the account up by id, which is already in the record.
- */
-export function hashEmail(email: string): string {
-  return `email:${sha256Hex(`email:${piiHashSalt}:${email.trim().toLowerCase()}`).slice(0, 24)}`;
-}
-
-/**
- * Keeps the country and operator prefix, drops the subscriber digits. Enough to
- * spot a fraud ring sharing one number range, useless for contacting anyone.
- */
-export function maskPhone(phone: string): string {
-  const digits = phone.replace(/\D/g, "");
-  if (digits.length < 6) return REDACTED;
-  const prefix = phone.trim().startsWith("+") ? "+" : "";
-  return `${prefix}${digits.slice(0, digits.length - 6)}${"*".repeat(4)}${digits.slice(-2)}`;
-}
-
-const EMAIL_IN_TEXT = /[^\s@]+@[^\s@]+\.[^\s@]+/g;
-
-/**
- * Recursively strips or pseudonymises anything a log must not hold.
- *
- * Pure: same input, same output, no clock and no I/O — so the rules below can
- * be unit-tested directly, which matters because this is the one function
- * standing between a stack trace and a data-protection incident.
- */
-export function redact(value: unknown, depth = 0): unknown {
-  if (value === null || value === undefined) return value;
-  if (depth > MAX_DEPTH) return "[truncated]";
-
-  if (typeof value === "string") {
-    // A value can carry an address even when its key does not say so — an
-    // error message, a query echo, a provider payload.
-    const withoutEmails = value.replace(EMAIL_IN_TEXT, (match) => hashEmail(match));
-    return withoutEmails.length > MAX_STRING_LENGTH
-      ? `${withoutEmails.slice(0, MAX_STRING_LENGTH)}…`
-      : withoutEmails;
+/** Pulls the caller's address, user agent and request id from the current request. */
+async function requestContext(): Promise<{
+  ip: string | null;
+  userAgent: string | null;
+  requestId: string | null;
+}> {
+  try {
+    const h = await headers();
+    const forwarded = h.get("x-forwarded-for")?.split(",")[0]?.trim();
+    return {
+      ip: forwarded || h.get("x-real-ip")?.trim() || null,
+      userAgent: h.get("user-agent")?.slice(0, 300) ?? null,
+      requestId: h.get("x-request-id"),
+    };
+  } catch {
+    // Outside a request (seed script, background job).
+    return { ip: null, userAgent: null, requestId: null };
   }
-
-  if (typeof value === "number" || typeof value === "boolean") return value;
-  if (typeof value === "bigint") return value.toString();
-  if (value instanceof Date) return value.toISOString();
-
-  if (Array.isArray(value)) {
-    const items = value.slice(0, MAX_ARRAY_ITEMS).map((item) => redact(item, depth + 1));
-    if (value.length > MAX_ARRAY_ITEMS) items.push(`[+${value.length - MAX_ARRAY_ITEMS} more]`);
-    return items;
-  }
-
-  if (value instanceof Error) {
-    return { name: value.name, message: redact(value.message, depth + 1) };
-  }
-
-  if (typeof value === "object") {
-    const output: Record<string, unknown> = {};
-    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-      if (SECRET_KEY_PATTERN.test(key)) {
-        output[key] = REDACTED;
-        continue;
-      }
-      if (typeof entry === "string" && EMAIL_KEY_PATTERN.test(key)) {
-        output[key] = hashEmail(entry);
-        continue;
-      }
-      if (typeof entry === "string" && PHONE_KEY_PATTERN.test(key)) {
-        output[key] = maskPhone(entry);
-        continue;
-      }
-      output[key] = redact(entry, depth + 1);
-    }
-    return output;
-  }
-
-  // Functions, symbols — nothing a log should carry.
-  return REDACTED;
 }
 
-/* ------------------------------------------------------------------ sink */
-
-export interface AuditSink {
-  write(record: AuditRecord): Promise<void>;
+interface Normalised {
+  action: AuditAction;
+  outcome: AuditOutcome;
+  severity: AuditSeverity;
+  description: string;
+  actorId: string | null;
+  actorRole: UserRole | null;
+  targetUserId: string | null;
+  targetType: string | null;
+  targetId: string | null;
+  transactionId: string | null;
+  requestId: string | null;
+  ip: string | null;
+  userAgent: string | null;
+  metadata: Record<string, unknown> | undefined;
 }
 
-/**
- * Structured single-line JSON on stdout, which is what a container platform
- * ships to a log pipeline. `console` is avoided so this never trips the
- * no-console rule and never gets swallowed by a client-side logger.
- */
-function createStdoutSink(): AuditSink {
+async function normalise(event: AuditEvent): Promise<Normalised> {
+  const context = await requestContext();
   return {
-    async write(record) {
-      const line = `${JSON.stringify({ channel: "audit", ...record })}\n`;
-      // Absent in the Edge runtime; an audited action never runs there, but
-      // dropping the line is better than throwing inside an error path.
-      process.stdout?.write?.(line);
-    },
+    action: event.action,
+    outcome: event.outcome ?? "success",
+    severity: event.severity ?? SEVERITY[event.action] ?? "info",
+    description: event.description ?? event.action,
+    actorId: event.actor?.id ?? event.actorId ?? null,
+    actorRole: event.actor?.role ?? event.actorRole ?? null,
+    targetUserId: event.targetUserId ?? null,
+    targetType: event.targetType ?? null,
+    targetId: event.targetId ?? null,
+    transactionId: event.transactionId ?? null,
+    requestId: event.requestId ?? context.requestId,
+    ip: event.ip ?? context.ip,
+    userAgent: event.userAgent ?? context.userAgent,
+    metadata: event.metadata ? (redact(event.metadata) as Record<string, unknown>) : undefined,
   };
 }
 
-let sink: AuditSink = createStdoutSink();
-
-/** Swap the sink — a database writer in production, a spy in tests. */
-export function setAuditSink(next: AuditSink): void {
-  sink = next;
-}
-
-/**
- * Records one auditable action.
- *
- * DEMO: the sink is stdout, which is neither durable nor tamper-evident.
- *
- * PRODUCTION requires all four of:
- *  1. an append-only store the application role can INSERT into and cannot
- *     UPDATE or DELETE;
- *  2. tamper evidence — each row carries a hash chained to its predecessor, so
- *     a deletion or edit breaks the chain and is detectable;
- *  3. retention for the period the licence demands (commonly five years for
- *     wagering and payment events), with deletion blocked before then;
- *  4. shipping off-host in near real time, so compromising the application
- *     server does not also compromise the evidence of the compromise.
- *
- * Never throws. An audit failure must not turn a successful withdrawal into an
- * error for the player — but it must be alerted on, because an operator that
- * cannot write its audit trail is, in regulatory terms, not operating.
- */
-export async function audit(event: AuditEvent): Promise<void> {
-  const record: AuditRecord = {
-    ...event,
+function emit(record: Normalised): void {
+  const line = `${JSON.stringify({
+    channel: "audit",
     at: new Date().toISOString(),
     mode: isDemo ? "demo" : "live",
-    userAgent: event.userAgent ? String(redact(event.userAgent)) : null,
-    metadata: event.metadata
-      ? (redact(event.metadata) as Record<string, unknown>)
-      : undefined,
-  };
+    ...record,
+    // The address is persisted for investigators; it does not belong in shared logs.
+    ip: undefined,
+    userAgent: record.userAgent ? String(redact(record.userAgent)) : null,
+  })}\n`;
+  process.stdout?.write?.(line);
+}
+
+const toDb = {
+  outcome: { success: "SUCCESS", failure: "FAILURE", blocked: "BLOCKED" },
+  severity: { info: "INFO", warning: "WARNING", critical: "CRITICAL" },
+} as const;
+
+async function persist(db: DbClient, record: Normalised): Promise<void> {
+  await db.auditLog.create({
+    data: {
+      action: record.action,
+      outcome: toDb.outcome[record.outcome],
+      severity: toDb.severity[record.severity],
+      actorId: record.actorId,
+      actorRole: record.actorRole === "admin" ? "ADMIN" : record.actorRole === "player" ? "PLAYER" : null,
+      targetUserId: record.targetUserId,
+      targetType: record.targetType,
+      targetId: record.targetId,
+      transactionId: record.transactionId,
+      description: record.description.slice(0, 500),
+      ip: record.ip,
+      userAgent: record.userAgent,
+      requestId: record.requestId,
+      metadata: record.metadata as never,
+    },
+  });
+}
+
+/**
+ * Records an event.
+ *
+ * Without `tx` this is best-effort and never throws — an audit failure must not
+ * turn a login into a 500. With `tx` it throws on failure so the surrounding
+ * transaction rolls back.
+ */
+export async function audit(event: AuditEvent): Promise<void> {
+  const record = await normalise(event);
+  emit(record);
+
+  if (!isPersisted(record.action)) return;
+
+  if (event.tx) {
+    await persist(event.tx, record);
+    return;
+  }
 
   try {
-    await sink.write(record);
-  } catch {
-    // Deliberately silent: see the contract above. Production wires this to the
-    // alerting channel rather than swallowing it.
+    await persist(prisma, record);
+  } catch (error) {
+    process.stderr?.write?.(
+      `${JSON.stringify({
+        channel: "audit-error",
+        action: record.action,
+        error: error instanceof Error ? error.name : "unknown",
+      })}\n`,
+    );
   }
 }
 
-/** Convenience for the common "who did it" triple, kept out of every call site. */
-export function actorOf(user: {
-  id: string;
-  role: UserRole;
-} | null): Pick<AuditEvent, "actorId" | "actorRole"> {
+export function actorOf(user: { id: string; role: UserRole } | null): Pick<
+  AuditEvent,
+  "actorId" | "actorRole"
+> {
   return { actorId: user?.id ?? null, actorRole: user?.role ?? null };
 }
 
-/** Exposed for the admin log viewer so it can label the environment honestly. */
 export const auditEnvironment = { mode: env.APP_MODE } as const;

@@ -7,7 +7,7 @@ import { formatAmount } from "@/lib/format";
 import { round2 } from "@/lib/games/constants";
 import { PLINKO_ROWS, buildPlinkoTable, type PlinkoDrop } from "@/lib/games/plinko";
 import { useI18n } from "@/i18n/I18nProvider";
-import { useCasinoWallet } from "./CasinoWalletProvider";
+import { useWallet } from "@/components/wallet/WalletProvider";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { StakePanel } from "./StakePanel";
 
@@ -22,7 +22,7 @@ const STEP_MS = 90;
  */
 export function PlinkoBoard() {
   const { t, locale } = useI18n();
-  const { balance, ready, play } = useCasinoWallet();
+  const { balance, ready, play } = useWallet();
   const [error, setError] = useState<string | null>(null);
 
   const [stake, setStake] = useState(1);

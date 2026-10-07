@@ -30,7 +30,7 @@ import { ThemeToggle } from "./ThemeToggle";
 export interface MobileNavProps {
   sports: Sport[];
   user: SessionUser | null;
-  wallet: Wallet;
+  wallet: Wallet | null;
 }
 
 const PRIMARY = [
@@ -61,7 +61,7 @@ export function MobileNav({ sports, user, wallet }: MobileNavProps) {
 
         {/* The balance is too wide for a 375px navbar, so it lives here — the
             first thing in the drawer rather than a cramped afterthought. */}
-        {user ? (
+        {user && wallet ? (
           <BalanceDisplay balance={wallet.balance} variant="block" />
         ) : (
           <div className="grid grid-cols-2 gap-2">

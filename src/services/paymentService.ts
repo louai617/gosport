@@ -1,5 +1,20 @@
+import "server-only";
+
 import { APP, JURISDICTION } from "@/config/app.config";
 import { getDataset } from "@/data";
+import { fromBig, toMillimes } from "@/lib/money";
+import { isUniqueViolation, prisma, transact } from "@/server/db";
+import { isDemo } from "@/server/env";
+import { requireUser } from "@/server/auth/guard";
+import { notifyAdmins } from "@/server/notifications/notify";
+import { audit } from "@/server/security/audit";
+import {
+  listPlayerTransactions,
+  type TransactionQueryInput,
+} from "@/server/repositories/transactionRepository";
+import { describeEntry } from "@/server/wallet/descriptions";
+import { appendLedgerEntry, ensureWallet, LedgerError } from "@/server/wallet/ledger";
+import { getSetting } from "@/server/settings/settingsService";
 import type {
   Paginated,
   PaymentIntentResult,
@@ -15,19 +30,21 @@ import type {
   TransactionQuery,
   WithdrawalIntentInput,
 } from "./types";
-import { asArray, containsNormalised, paginate } from "./utils";
+import { asArray } from "./utils";
 
 /**
- * Wallet, transaction history and the payment-provider seam.
+ * The player's own wallet, ledger history and the payment-provider seam.
  *
- * ── SPORTGO HOLDS NO PAYMENT CREDENTIALS ──────────────────────────────────
- * This module is an adapter boundary and nothing more. SportGo never receives,
- * transmits or stores card data: a PCI-DSS compliant provider owns the card
- * fields through hosted fields or a full redirect, and the only values that
- * cross this boundary are an amount, a method id and a provider-issued intent
- * id. No provider is integrated in this build, so deposits and withdrawals are
- * refused rather than simulated — a screen that says "deposit successful" is
- * the one thing a demo sportsbook must never show.
+ * ── WHERE MONEY COMES FROM ────────────────────────────────────────────────
+ * No payment provider is integrated, so a *player cannot deposit* by
+ * themselves: `createDeposit` is refused. Credit enters an account when an
+ * operator records a deposit (or a bonus, or a correction) through the admin
+ * console, which writes an immutable, audited ledger entry. A *withdrawal
+ * request* is real: it holds the funds immediately and waits in the operator's
+ * queue until someone approves or rejects it.
+ *
+ * Every function here derives the player from the session — there is no
+ * `userId` parameter anywhere, so one player cannot name another's wallet.
  * ──────────────────────────────────────────────────────────────────────────
  */
 
@@ -124,8 +141,36 @@ export async function getPaymentMethods(
   return matched.sort((a, b) => STATUS_RANK[a.status] - STATUS_RANK[b.status]);
 }
 
+/** Open stakes and withdrawals awaiting approval — already deducted from the balance. */
+export async function walletSnapshot(userId: string): Promise<Wallet> {
+  const [wallet, openStakes, pendingWithdrawals] = await Promise.all([
+    prisma.wallet.findUnique({ where: { userId } }),
+    prisma.bet.aggregate({ where: { userId, status: "OPEN" }, _sum: { stake: true } }),
+    prisma.transaction.aggregate({
+      where: { userId, type: "WITHDRAWAL", status: "PENDING" },
+      _sum: { amount: true },
+    }),
+  ]);
+
+  const balance = fromBig(wallet?.balance) / 1000;
+  const reserved =
+    (fromBig(openStakes._sum.stake) + Math.abs(fromBig(pendingWithdrawals._sum.amount))) / 1000;
+
+  return {
+    userId,
+    currency: wallet?.currency ?? JURISDICTION.currency,
+    balance,
+    reserved,
+    withdrawable: balance,
+    bonusBalance: 0,
+    updatedAt: (wallet?.updatedAt ?? new Date()).toISOString(),
+    simulated: isDemo,
+  };
+}
+
 export async function getWallet(): Promise<Wallet> {
-  return getDataset().wallet;
+  const user = await requireUser();
+  return walletSnapshot(user.id);
 }
 
 /* --------------------------------------------------------------- transactions */
@@ -133,25 +178,23 @@ export async function getWallet(): Promise<Wallet> {
 export async function getTransactions(
   query: TransactionQuery = {},
 ): Promise<Paginated<Transaction>> {
-  const kinds = asArray(query.kind);
-  const statuses = asArray(query.status);
-  const fromMs = query.fromIso ? Date.parse(query.fromIso) : undefined;
-  const toMs = query.toIso ? Date.parse(query.toIso) : undefined;
-  const search = query.search?.trim();
+  const user = await requireUser();
 
-  const matched = getDataset().transactions.filter((transaction) => {
-    if (kinds.length > 0 && !kinds.includes(transaction.kind)) return false;
-    if (statuses.length > 0 && !statuses.includes(transaction.status)) return false;
-
-    const createdMs = Date.parse(transaction.createdAt);
-    if (fromMs !== undefined && createdMs < fromMs) return false;
-    if (toMs !== undefined && createdMs > toMs) return false;
-
-    return !search || containsNormalised(transaction.reference, search);
-  });
-
-  matched.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
-  return paginate(matched, query.page, query.pageSize);
+  const input: TransactionQueryInput = {
+    userId: user.id,
+    kinds: asArray(query.kind),
+    statuses: asArray(query.status),
+    from: query.fromIso ? new Date(query.fromIso) : undefined,
+    to: query.toIso ? new Date(query.toIso) : undefined,
+    search: query.search,
+    page: query.page,
+    pageSize: query.pageSize,
+    sort: query.sort,
+    direction: query.direction,
+    minAmount: query.minAmount,
+    maxAmount: query.maxAmount,
+  };
+  return listPlayerTransactions(input);
 }
 
 /* ------------------------------------------------------------- money movement */
@@ -166,6 +209,7 @@ function validateMovement(
   method: PaymentMethod | undefined,
   amount: number,
   direction: "deposit" | "withdrawal",
+  kycStatus: string = "not_started",
 ): string | null {
   if (!method) return "wallet.error.methodNotFound";
   if (method.status !== "available") return "wallet.error.methodUnavailable";
@@ -174,7 +218,7 @@ function validateMovement(
     direction === "deposit" ? method.supportsDeposit : method.supportsWithdrawal;
   if (!supported) return "wallet.error.methodUnavailable";
 
-  if (method.requiresKyc && getDataset().demoUser.kycStatus !== "verified") {
+  if (method.requiresKyc && kycStatus !== "verified") {
     return "wallet.error.kycRequired";
   }
 
@@ -198,49 +242,114 @@ function findMethod(methodId: string): PaymentMethod | undefined {
 }
 
 /**
- * Never succeeds in this build. The request is validated first so the player
- * sees the real reason when one applies, and is then handed to the adapter,
- * which refuses because no licensed provider is connected.
+ * Always refused: no payment provider is connected, and recording a deposit that
+ * moved no real money would be the most misleading thing this platform could do.
+ * Credit is added by an operator through the admin console.
  */
 export async function createDeposit(
   input: MoneyMovementInput,
 ): Promise<PaymentIntentResult> {
+  await requireUser();
   const method = findMethod(input.methodId);
   const problem = validateMovement(method, input.amount, "deposit");
   if (problem) return refuse(problem);
 
   return getPaymentProvider().createDepositIntent({
-    userId: getDataset().demoUser.id,
+    userId: (await requireUser()).id,
     methodId: input.methodId,
     amount: input.amount,
     currency: JURISDICTION.currency,
     returnUrl: `${APP.url}/wallet/deposit/return`,
-    idempotencyKey: newIdempotencyKey(),
+    idempotencyKey: input.idempotencyKey ?? newIdempotencyKey(),
   });
 }
 
 /**
- * Never succeeds in this build. A licensed operator gates every payout on a
- * verified identity plus source-of-funds, sanctions and PEP screening before
- * reaching the provider; none of those checks exists here, which is precisely
- * why nothing may leave the sandbox ledger.
+ * Requests a payout.
+ *
+ * The funds are deducted at once and recorded as a PENDING `WITHDRAWAL` ledger
+ * entry — holding them is what prevents the same credit being wagered and
+ * withdrawn. An operator then approves it (the entry completes) or rejects it
+ * (the entry is reversed and the funds are returned by a REFUND entry). Nothing
+ * leaves the platform automatically: there is no payout provider.
  */
 export async function createWithdrawal(
   input: MoneyMovementInput,
 ): Promise<PaymentIntentResult> {
+  const user = await requireUser();
   const method = findMethod(input.methodId);
-  const problem = validateMovement(method, input.amount, "withdrawal");
+
+  const profile = await prisma.playerProfile.findUnique({
+    where: { userId: user.id },
+    select: { withdrawalsBlocked: true },
+  });
+  if (profile?.withdrawalsBlocked) return refuse("wallet.error.withdrawalsBlocked");
+  if (user.status === "closed") return refuse("auth.error.accountClosed");
+  if (await getSetting("general.maintenanceMode")) return refuse("auth.error.maintenance");
+
+  const problem = validateMovement(method, input.amount, "withdrawal", user.kycStatus);
   if (problem) return refuse(problem);
 
-  if (input.amount > getDataset().wallet.withdrawable) {
-    return refuse("wallet.error.insufficientFunds");
-  }
+  const [min, max] = await Promise.all([
+    getSetting("wallet.minTransactionAmount"),
+    getSetting("wallet.maxTransactionAmount"),
+  ]);
+  if (input.amount < min) return refuse("wallet.validation.amountTooLow");
+  if (input.amount > max) return refuse("wallet.validation.amountTooHigh");
 
-  return getPaymentProvider().createWithdrawalPayout({
-    userId: getDataset().demoUser.id,
-    methodId: input.methodId,
-    amount: input.amount,
-    currency: JURISDICTION.currency,
-    idempotencyKey: newIdempotencyKey(),
-  });
+  const millimes = toMillimes(input.amount);
+  const idempotencyKey = input.idempotencyKey ?? newIdempotencyKey();
+
+  try {
+    const result = await transact(async (tx) => {
+      await ensureWallet(tx, user.id);
+      const { entry, replayed } = await appendLedgerEntry(tx, {
+        userId: user.id,
+        type: "WITHDRAWAL",
+        amount: -millimes,
+        status: "PENDING",
+        description: "Withdrawal request",
+        idempotencyKey: `withdraw:${idempotencyKey}`,
+        createdById: user.id,
+        metadata: {
+          descriptionKey: "wallet.tx.withdrawalRequest",
+          methodId: input.methodId,
+        },
+      });
+
+      if (!replayed) {
+        await audit({
+          tx,
+          action: "wallet.withdrawal_requested",
+          actor: user,
+          targetUserId: user.id,
+          targetType: "transaction",
+          targetId: entry.id,
+          transactionId: entry.id,
+          description: `Withdrawal of ${input.amount.toFixed(3)} ${JURISDICTION.currency} requested`,
+          metadata: { amountMillimes: millimes, methodId: input.methodId },
+        });
+        await notifyAdmins({
+          tx,
+          kind: "withdrawal_request",
+          titleKey: "notify.withdrawalRequest.title",
+          bodyKey: "notify.withdrawalRequest.body",
+          params: { username: user.username, amount: input.amount.toFixed(2) },
+          href: `/admin/transactions?status=pending&type=withdrawal`,
+        });
+      }
+      return entry;
+    });
+
+    return {
+      ok: true,
+      intentId: result.reference,
+      status: "pending",
+      simulated: isDemo,
+    };
+  } catch (error) {
+    if (error instanceof LedgerError) return refuse(error.messageKey);
+    if (isUniqueViolation(error)) return refuse("common.error.unexpected");
+    throw error;
+  }
 }

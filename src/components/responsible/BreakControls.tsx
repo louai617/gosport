@@ -3,11 +3,8 @@
 import { useActionState, useState } from "react";
 import { CalendarOff, Pause } from "lucide-react";
 import { RESPONSIBLE_GAMBLING } from "@/config/app.config";
-import {
-  coolingOffAction,
-  emptyLimitState,
-  selfExclusionAction,
-} from "@/app/actions/responsible";
+import { coolingOffAction, selfExclusionAction } from "@/app/actions/responsible";
+import { emptyLimitState } from "@/lib/actionState";
 import { cn } from "@/lib/cn";
 import { useT } from "@/i18n/I18nProvider";
 import { Alert } from "@/components/ui/Alert";

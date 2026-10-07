@@ -3,7 +3,8 @@
 import { useActionState, useState } from "react";
 import Link from "next/link";
 import { JURISDICTION } from "@/config/app.config";
-import { emptyFormState, registerAction } from "@/app/actions/auth";
+import { registerAction } from "@/app/actions/auth";
+import { emptyActionState } from "@/lib/actionState";
 import { passwordStrength } from "@/lib/validation";
 import { useT } from "@/i18n/I18nProvider";
 import { Button } from "@/components/ui/Button";
@@ -26,7 +27,7 @@ const COUNTRY_OPTIONS = ["TN", "DZ", "MA", "FR", "IT", "DE"] as const;
  */
 export function RegisterForm() {
   const t = useT();
-  const [state, formAction, pending] = useActionState(registerAction, emptyFormState);
+  const [state, formAction, pending] = useActionState(registerAction, emptyActionState);
   const [password, setPassword] = useState("");
 
   const fieldError = (name: string) =>
@@ -52,6 +53,17 @@ export function RegisterForm() {
           error={fieldError("lastName")}
         />
       </div>
+
+      <Input
+        name="username"
+        autoComplete="username"
+        autoCapitalize="none"
+        spellCheck={false}
+        required
+        label={t("auth.field.username")}
+        hint={t("auth.field.usernameHint")}
+        error={fieldError("username")}
+      />
 
       <Input
         name="email"

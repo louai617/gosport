@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { BellOff } from "lucide-react";
-import { getNotifications } from "@/services/userService";
+import { getNotifications } from "@/services/notificationService";
+import { markAllNotificationsReadFormAction } from "@/app/actions/account";
+import { Button } from "@/components/ui/Button";
 import { getT, getRequestLocale } from "@/i18n/server";
 import { formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/cn";
@@ -27,6 +29,14 @@ export default async function NotificationsPage() {
           {t("account.notifications.description")}
         </p>
       </header>
+
+      {notifications.some((notification) => !notification.read) ? (
+        <form action={markAllNotificationsReadFormAction}>
+          <Button type="submit" variant="secondary" size="sm">
+            {t("notifications.markAllRead")}
+          </Button>
+        </form>
+      ) : null}
 
       {notifications.length === 0 ? (
         <div className="rounded-xl border border-line bg-surface">

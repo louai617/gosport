@@ -3,7 +3,6 @@ import { z } from "zod";
 import {
   BETTING_RULES,
   JURISDICTION,
-  RESPONSIBLE_GAMBLING,
 } from "@/config/app.config";
 import { LOCALES } from "@/i18n/config";
 import type { ApiFieldError } from "@/types/api";
@@ -75,6 +74,30 @@ export const emailSchema = z
   .pipe(z.email({ message: "auth.validation.emailInvalid" }));
 
 export type Email = z.infer<typeof emailSchema>;
+
+/** Names that would let an account pass for the platform or its staff. */
+const RESERVED_USERNAMES: ReadonlySet<string> = new Set([
+  "admin", "administrator", "root", "system", "support", "staff", "moderator",
+  "sportgo", "security", "billing", "cashier", "help", "official", "null",
+  "undefined", "api", "www", "mail", "postmaster",
+]);
+
+/**
+ * Public handle. Lower-cased on the way in, so `Alice` and `alice` are one
+ * account — uniqueness is only meaningful on the canonical form.
+ */
+export const usernameSchema = z
+  .string({ message: "auth.validation.usernameRequired" })
+  .trim()
+  .toLowerCase()
+  .min(3, { message: "auth.validation.usernameInvalid" })
+  .max(24, { message: "auth.validation.usernameInvalid" })
+  .regex(/^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/, { message: "auth.validation.usernameInvalid" })
+  .refine((value) => !RESERVED_USERNAMES.has(value), {
+    message: "auth.validation.usernameReserved",
+  });
+
+export type Username = z.infer<typeof usernameSchema>;
 
 /**
  * Length first, composition second, deny-list last.
@@ -301,6 +324,7 @@ const idSchema = z
 
 export const registerSchema = z
   .object({
+    username: usernameSchema,
     firstName: nameSchema,
     lastName: nameSchema,
     email: emailSchema,
@@ -338,8 +362,16 @@ export const registerSchema = z
 
 export type RegisterInput = z.infer<typeof registerSchema>;
 
+/** E-mail address or username — resolved server-side against the canonical forms. */
+export const identifierSchema = z
+  .string({ message: "auth.validation.identifierRequired" })
+  .trim()
+  .toLowerCase()
+  .min(3, { message: "auth.validation.identifierRequired" })
+  .max(254, { message: "auth.validation.identifierRequired" });
+
 export const loginSchema = z.object({
-  email: emailSchema,
+  identifier: identifierSchema,
   password: existingPasswordSchema,
   rememberMe: z.boolean().optional().default(false),
 });
@@ -418,6 +450,8 @@ export const withdrawalSchema = z.object({
   confirmOwnership: z.literal(true, {
     message: "wallet.validation.ownershipRequired",
   }),
+  /** Minted when the form renders, so a double-click or a retry books one withdrawal. */
+  idempotencyKey: z.string().trim().min(8).max(128).optional(),
 });
 
 export type WithdrawalInput = z.infer<typeof withdrawalSchema>;
@@ -430,7 +464,6 @@ const LIMIT_KINDS = [
   "deposit",
   "stake",
   "loss",
-  "session_duration",
   "single_bet",
 ] as const satisfies readonly LimitKind[];
 
@@ -449,38 +482,25 @@ export const limitChangeSchema = z
   .object({
     kind: z.enum(LIMIT_KINDS, { message: "responsible.validation.kindInvalid" }),
     period: z.enum(LIMIT_PERIODS, { message: "responsible.validation.periodInvalid" }),
-    /** Currency amount, or minutes when `kind` is `session_duration`. */
+    /** Amount in TND. */
     value: z.number({ message: "responsible.validation.valueInvalid" }),
   })
   .superRefine((input, ctx) => {
-    const isDuration = input.kind === "session_duration";
-    const min = isDuration ? 5 : 1;
-    const max = isDuration ? RESPONSIBLE_GAMBLING.maxSessionMinutes : 1_000_000;
-
-    if (isDuration && !Number.isInteger(input.value)) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["value"],
-        message: "responsible.validation.valueInteger",
-      });
-      return;
-    }
-
-    if (input.value < min) {
+    if (input.value < 1) {
       ctx.addIssue({
         code: "custom",
         path: ["value"],
         message: "responsible.validation.valueTooLow",
       });
     }
-    if (input.value > max) {
+    if (input.value > 1_000_000) {
       ctx.addIssue({
         code: "custom",
         path: ["value"],
         message: "responsible.validation.valueTooHigh",
       });
     }
-    if (!isDuration && !hasAtMostDecimals(input.value, 2)) {
+    if (!hasAtMostDecimals(input.value, 2)) {
       ctx.addIssue({
         code: "custom",
         path: ["value"],
@@ -490,51 +510,6 @@ export const limitChangeSchema = z
   });
 
 export type LimitChangeInput = z.infer<typeof limitChangeSchema>;
-
-const COOLING_OFF_DAYS: readonly number[] = RESPONSIBLE_GAMBLING.coolingOffOptionsDays;
-const EXCLUSION_MONTHS: readonly number[] = RESPONSIBLE_GAMBLING.selfExclusionOptionsMonths;
-
-/**
- * Two different products behind one form. A cooling-off is a short pause the
- * player chooses; a self-exclusion is a commitment that cannot be shortened,
- * may be indefinite (`months: null`), and in a live deployment must be
- * mirrored to the national register before it counts as honoured.
- */
-export const selfExclusionSchema = z.discriminatedUnion("kind", [
-  z.object({
-    kind: z.literal("cooling_off"),
-    days: z
-      .number({ message: "responsible.validation.durationInvalid" })
-      .int({ message: "responsible.validation.durationInvalid" })
-      .refine((value) => COOLING_OFF_DAYS.includes(value), {
-        message: "responsible.validation.durationUnsupported",
-      }),
-    acknowledged: z.literal(true, {
-      message: "responsible.validation.acknowledgeRequired",
-    }),
-  }),
-  z.object({
-    kind: z.literal("self_exclusion"),
-    /** `null` means indefinite — the strongest option, never auto-reversed. */
-    months: z
-      .number({ message: "responsible.validation.durationInvalid" })
-      .int({ message: "responsible.validation.durationInvalid" })
-      .refine((value) => EXCLUSION_MONTHS.includes(value), {
-        message: "responsible.validation.durationUnsupported",
-      })
-      .nullable(),
-    acknowledged: z.literal(true, {
-      message: "responsible.validation.acknowledgeRequired",
-    }),
-    /** Typed confirmation, because this decision is intentionally hard to make. */
-    confirmation: z
-      .string({ message: "responsible.validation.confirmationRequired" })
-      .trim()
-      .min(1, { message: "responsible.validation.confirmationRequired" }),
-  }),
-]);
-
-export type SelfExclusionInput = z.infer<typeof selfExclusionSchema>;
 
 /* ========================================================================== */
 /* profile                                                                    */
@@ -553,6 +528,25 @@ export const profileUpdateSchema = z.object({
 });
 
 export type ProfileUpdateInput = z.infer<typeof profileUpdateSchema>;
+
+/** Public display name: what other screens show instead of a full name. */
+export const displayNameSchema = z
+  .string({ message: "auth.validation.nameRequired" })
+  .transform((value) => value.replace(UNSAFE_TEXT, "").replace(/\s+/g, " ").trim())
+  .pipe(
+    z
+      .string()
+      .min(2, { message: "auth.validation.nameTooShort" })
+      .max(40, { message: "auth.validation.nameTooLong" }),
+  );
+
+/** What a player may edit about themselves. Identity data is an operator decision. */
+export const ownProfileSchema = z.object({
+  phone: phoneSchema,
+  displayName: displayNameSchema,
+});
+
+export type OwnProfileInput = z.infer<typeof ownProfileSchema>;
 
 /* ========================================================================== */
 /* betting                                                                    */
@@ -593,6 +587,7 @@ export const betPlacementSchema = z
      * request instead of booking the new price.
      */
     acceptOddsChange: z.boolean().optional().default(false),
+    idempotencyKey: z.string().trim().min(8).max(128).optional(),
   })
   .superRefine((input, ctx) => {
     const count = input.selections.length;

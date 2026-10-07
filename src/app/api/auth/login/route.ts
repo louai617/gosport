@@ -1,40 +1,48 @@
 import { loginSchema } from "@/lib/validation";
-import { DEMO_SESSION_COOKIE, login } from "@/services/userService";
 import { fail, ok, withRoute } from "@/server/api";
+import { identityRateLimitKey, limiterFor, RATE_LIMITS } from "@/server/security/rateLimit";
+import { loginUser } from "@/services/authService";
 
 /**
  * POST /api/auth/login
  *
- * DEMO: there is no credential store, so nothing is authenticated. A real
- * implementation verifies an Argon2id hash in constant time, rotates the
- * session on success, and returns the same generic failure for an unknown
- * address as for a wrong password — a different answer per address turns this
- * endpoint into an account-enumeration oracle.
+ * Verifies an Argon2id hash in constant time, rotates into a fresh session, and
+ * answers an unknown account exactly as it answers a wrong password. Throttled
+ * per address (by `withRoute`) and per identifier (below), so one account cannot
+ * be ground down from many addresses either.
  */
 export const POST = withRoute(
   async ({ input }) => {
-    const result = await login(input);
-    if (!result.ok) {
-      return fail("unauthorized", result.errorKey ?? "error.unauthorized", {
-        status: 401,
+    const policy = RATE_LIMITS.login;
+    const perAccount = await limiterFor(policy).check(
+      identityRateLimitKey("login", input.identifier),
+      policy.limit,
+      policy.windowSeconds,
+    );
+    if (!perAccount.allowed) {
+      return fail("rate_limited", "common.error.rateLimited", {
+        headers: { "retry-after": String(perAccount.retryAfterSeconds) },
       });
     }
 
-    const response = ok({ signedIn: true, simulated: true });
-    response.headers.append(
-      "set-cookie",
-      [
-        `${DEMO_SESSION_COOKIE}=1`,
-        "Path=/",
-        "HttpOnly",
-        "SameSite=Lax",
-        process.env.NODE_ENV === "production" ? "Secure" : "",
-        `Max-Age=${input.rememberMe ? 60 * 60 * 24 * 7 : 60 * 60 * 8}`,
-      ]
-        .filter(Boolean)
-        .join("; "),
-    );
-    return response;
+    const result = await loginUser(input);
+    if (!result.ok) {
+      return fail("unauthorized", result.errorKey, {
+        status: 401,
+        headers: result.retryAfterSeconds
+          ? { "retry-after": String(result.retryAfterSeconds) }
+          : undefined,
+      });
+    }
+
+    return ok({
+      user: {
+        id: result.user.id,
+        username: result.user.username,
+        role: result.user.role,
+        mustChangePassword: result.user.mustChangePassword,
+      },
+    });
   },
-  { schema: loginSchema, rateLimit: "login", audit: "auth.login" },
+  { schema: loginSchema, rateLimit: "login" },
 );

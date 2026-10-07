@@ -15,5 +15,12 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 /prisma/*.db
-/prisma/migrations/**/migration_lock.toml
 coverage
+
+# local databases and secrets
+/prisma/dev.db*
+.env.local
+.env.*.local
+!.env.example
+
+/dev.db*

@@ -13,19 +13,10 @@ import type { BetSlipCalculation, BetSlipItem, BetSlipMode } from "@/types/betti
  * the app (hero card, live card, market group, search result) goes through
  * `toggle`, and every surface that renders the slip reads from here.
  *
- * DEMO: `place()` does not submit a wager. It records a simulated ticket and
- * returns its reference so the UI can show a confirmation. No funds move.
+ * Placement is the server's job (`POST /api/bets` → `bettingService.placeBet`):
+ * this store only holds what the player has picked, and clears itself once the
+ * server has accepted the slip. It never decides whether a bet was placed.
  */
-
-export interface PlacedTicket {
-  reference: string;
-  items: BetSlipItem[];
-  mode: BetSlipMode;
-  totalStake: number;
-  potentialReturn: number;
-  placedAt: string;
-  simulated: true;
-}
 
 interface BetSlipState {
   items: BetSlipItem[];
@@ -37,7 +28,6 @@ interface BetSlipState {
   /** Id of the selection added most recently — drives the "added" animation. */
   lastAddedId: string | null;
   acceptOddsChanges: boolean;
-  lastTicket: PlacedTicket | null;
 
   add: (item: Omit<BetSlipItem, "stake" | "addedAt">) => void;
   remove: (selectionId: string) => void;
@@ -56,8 +46,8 @@ interface BetSlipState {
   setOpen: (value: boolean) => void;
   clearLastAdded: () => void;
 
-  place: (reference: string, placedAt: string) => PlacedTicket | null;
-  dismissTicket: () => void;
+  /** Called once the server has accepted the slip: empties it and closes the sheet. */
+  clearAfterPlacement: () => void;
 }
 
 const MAX = BETTING_RULES.maxSelectionsPerSlip;
@@ -72,7 +62,6 @@ export const useBetSlipStore = create<BetSlipState>()(
       isOpen: false,
       lastAddedId: null,
       acceptOddsChanges: true,
-      lastTicket: null,
 
       add: (item) =>
         set((state) => {
@@ -141,30 +130,7 @@ export const useBetSlipStore = create<BetSlipState>()(
       setOpen: (isOpen) => set({ isOpen }),
       clearLastAdded: () => set({ lastAddedId: null }),
 
-      place: (reference, placedAt) => {
-        const state = get();
-        const calc = calculateSlip({
-          items: state.items,
-          mode: state.mode,
-          sharedStake: state.sharedStake,
-          systemSize: state.systemSize,
-        });
-        if (calc.errorKeys.length > 0 || state.items.length === 0) return null;
-
-        const ticket: PlacedTicket = {
-          reference,
-          items: state.items,
-          mode: state.mode,
-          totalStake: calc.totalStake,
-          potentialReturn: calc.potentialReturn,
-          placedAt,
-          simulated: true,
-        };
-        set({ items: [], mode: "single", lastTicket: ticket, isOpen: false });
-        return ticket;
-      },
-
-      dismissTicket: () => set({ lastTicket: null }),
+      clearAfterPlacement: () => set({ items: [], mode: "single", isOpen: false }),
     }),
     {
       name: "sportgo.betslip.v1",

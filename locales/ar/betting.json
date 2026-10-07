@@ -49,5 +49,11 @@
   "betting.validation.systemSizeInvalid": "اختر حجم نظام صالحًا",
   "betting.validation.tooManySelections": "عدد الاختيارات في القسيمة كبير جدًا",
   "betslip.empty.browse": "تصفّح الرياضات",
-  "betslip.demoNoticeShort": "لا أموال في الأمر — لا يُراهن بشيء ولا يُدفع شيء."
+  "betslip.demoNoticeShort": "لا أموال في الأمر — لا يُراهن بشيء ولا يُدفع شيء.",
+  "betslip.placeFailed": "لم يتم تسجيل الرهان",
+  "betslip.signInToBet": "سجّل الدخول للمراهنة",
+  "betting.error.oddsChanged": "تغيّرت الأسعار. راجع قسيمتك وحاول مجددًا.",
+  "betting.error.selectionUnknown": "أحد اختياراتك لم يعد متاحًا",
+  "betting.error.selectionUnavailable": "اختيار معلّق أو انتهت المباراة",
+  "betting.error.duplicateSelection": "الاختيار نفسه مكرر"
 }

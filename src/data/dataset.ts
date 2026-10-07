@@ -4,18 +4,6 @@ import { COMPETITIONS, COUNTRIES, SPORTS, TEAMS } from "./catalog";
 import { buildFixtures } from "./fixtures";
 import { buildPromotions } from "./promotions";
 import { PAYMENT_METHODS } from "./payments";
-import {
-  DEMO_EXCLUSIONS,
-  buildAdminUsers,
-  buildBets,
-  buildDemoUser,
-  buildFavorites,
-  buildLedger,
-  buildLimits,
-  buildNotifications,
-  buildWallet,
-} from "./account";
-
 /**
  * Assembles the full demo dataset for a reference instant.
  *
@@ -57,9 +45,6 @@ export function buildDataset(nowMs: number): MockDataset {
     liveEventCount: countByCompetition.get(competition.id)?.live ?? 0,
   }));
 
-  const bets = buildBets(nowMs);
-  const { transactions, closingBalance, reserved } = buildLedger(nowMs, bets);
-
   return {
     nowMs,
     sports,
@@ -71,14 +56,5 @@ export function buildDataset(nowMs: number): MockDataset {
     selections,
     promotions: buildPromotions(nowMs),
     paymentMethods: PAYMENT_METHODS,
-    demoUser: buildDemoUser(nowMs),
-    wallet: buildWallet(nowMs, closingBalance, reserved),
-    bets,
-    transactions,
-    notifications: buildNotifications(nowMs, bets),
-    favorites: buildFavorites(nowMs),
-    limits: buildLimits(nowMs),
-    exclusions: DEMO_EXCLUSIONS,
-    adminUsers: buildAdminUsers(nowMs),
   };
 }

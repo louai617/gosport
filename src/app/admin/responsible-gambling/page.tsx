@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import { ShieldCheck } from "lucide-react";
-import { RESPONSIBLE_GAMBLING, compliance } from "@/config/app.config";
+import { compliance } from "@/config/app.config";
+import { requirePageAdmin } from "@/server/auth/pageGuard";
+import { getSetting } from "@/server/settings/settingsService";
 import { getResponsibleGamblingCases } from "@/services/adminService";
 import { getAdminT, getRequestLocale } from "@/i18n/server";
 import { formatDate } from "@/lib/format";
-import { Alert } from "@/components/ui/Alert";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { AdminTableClient, type AdminRow } from "@/components/admin/AdminTableClient";
 import { parseListQuery } from "@/lib/listQuery";
@@ -23,19 +24,21 @@ interface PageProps {
 }
 
 export default async function AdminResponsiblePage({ searchParams }: PageProps) {
+  await requirePageAdmin("rg.read");
   const params = await searchParams;
   const list = parseListQuery(params);
 
-  const [t, locale, cases] = await Promise.all([
+  const [t, locale, cases, coolingOffHours] = await Promise.all([
     getAdminT(),
     getRequestLocale(),
     getResponsibleGamblingCases(list),
+    getSetting("responsible.limitIncreaseCoolingOffHours"),
   ]);
 
   const rows: AdminRow[] = cases.items.map((entry) => ({
     id: entry.id,
     cells: {
-      user: { text: entry.userName, sub: entry.userId },
+      user: { text: entry.userName, sub: entry.userId, href: `/admin/players/${entry.userId}?tab=responsible` },
       // The service emits a full i18n key for both fields.
       kind: { text: t(entry.kind) },
       detail: { text: t(entry.detail) },
@@ -60,21 +63,11 @@ export default async function AdminResponsiblePage({ searchParams }: PageProps) 
         </p>
       </header>
 
-      <Alert tone="warning" title={t("common.demo.badge")}>
-        {t("admin.responsible.demoNotice")}
-      </Alert>
-
-      <section className="grid gap-4 sm:grid-cols-3">
+      <section className="grid gap-4 sm:grid-cols-2">
         <PolicyTile
           label={t("admin.responsible.policy.coolingOff")}
           value={t("responsible.limits.increaseDelayed", {
-            hours: RESPONSIBLE_GAMBLING.limitIncreaseCoolingOffHours,
-          })}
-        />
-        <PolicyTile
-          label={t("admin.responsible.policy.realityCheck")}
-          value={t("responsible.limits.minutes", {
-            count: RESPONSIBLE_GAMBLING.realityCheckMinutes,
+            hours: coolingOffHours,
           })}
         />
         <PolicyTile

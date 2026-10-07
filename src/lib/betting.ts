@@ -35,7 +35,7 @@ export function combinations(n: number, k: number): number {
 }
 
 /** All k-sized index combinations of `length` items. */
-function indexCombinations(length: number, k: number): number[][] {
+export function indexCombinations(length: number, k: number): number[][] {
   const out: number[][] = [];
   const current: number[] = [];
   const walk = (start: number) => {

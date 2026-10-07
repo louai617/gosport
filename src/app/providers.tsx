@@ -6,7 +6,7 @@ import type { Dictionary } from "@/i18n/types";
 import { ThemeProvider } from "@/theme/ThemeProvider";
 import type { Theme } from "@/theme/config";
 import { ToastProvider } from "@/components/ui/Toast";
-import { CasinoWalletProvider } from "@/components/games/CasinoWalletProvider";
+import { WalletProvider } from "@/components/wallet/WalletProvider";
 
 /**
  * Client-side provider stack: theme, locale, toasts, casino wallet.
@@ -30,7 +30,7 @@ export function Providers({
     <ThemeProvider initialTheme={initialTheme}>
       <I18nProvider locale={locale} dictionary={dictionary}>
         <ToastProvider>
-          <CasinoWalletProvider>{children}</CasinoWalletProvider>
+          <WalletProvider>{children}</WalletProvider>
         </ToastProvider>
       </I18nProvider>
     </ThemeProvider>

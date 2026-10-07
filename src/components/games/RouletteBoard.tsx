@@ -14,7 +14,7 @@ import { formatAmount } from "@/lib/format";
 import { round2 } from "@/lib/games/constants";
 import { useI18n } from "@/i18n/I18nProvider";
 import { Button } from "@/components/ui/Button";
-import { useCasinoWallet } from "./CasinoWalletProvider";
+import { useWallet } from "@/components/wallet/WalletProvider";
 
 const CHIPS = [1, 5, 25, 100] as const;
 
@@ -41,7 +41,7 @@ const SPIN_MS = 2600;
 
 export function RouletteBoard() {
   const { t, locale } = useI18n();
-  const { balance, ready, play } = useCasinoWallet();
+  const { balance, ready, play } = useWallet();
 
   const [chip, setChip] = useState<number>(5);
   const [bets, setBets] = useState<Record<string, number>>({});

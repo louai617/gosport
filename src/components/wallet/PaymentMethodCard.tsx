@@ -88,12 +88,15 @@ export function PaymentMethodCard({
         </span>
 
         <span className="numeric mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-caption normal-case tracking-normal text-ink-subtle">
-          <span>
-            {t("wallet.limits", {
-              min: formatAmount(method.minAmount, locale),
-              max: formatAmount(method.maxAmount, locale),
-            })}
-          </span>
+          {/* Operator payouts are bounded by the operator's own settings, not a rail's. */}
+          {method.kind === "manual" ? null : (
+            <span>
+              {t("wallet.limits", {
+                min: formatAmount(method.minAmount, locale),
+                max: formatAmount(method.maxAmount, locale),
+              })}
+            </span>
+          )}
           <span>{t(method.processingTimeKey)}</span>
           {method.requiresKyc ? <span>{t("wallet.requiresKyc")}</span> : null}
         </span>

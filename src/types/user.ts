@@ -1,13 +1,26 @@
 /** Identity, account and compliance-facing models. */
 
-export type UserRole = "player" | "support" | "trader" | "admin";
+export type UserRole = "player" | "admin";
 
 export type KycStatus = "not_started" | "pending" | "verified" | "rejected" | "expired";
 
-export type AccountStatus = "active" | "restricted" | "self_excluded" | "closed";
+/**
+ * `pending` — invited, no password yet. `suspended` / `locked` — an
+ * administrator's decision or a security lock; neither can sign in.
+ * `self_excluded` — the player's own choice; can sign in, may not wager.
+ */
+export type AccountStatus =
+  | "pending"
+  | "active"
+  | "suspended"
+  | "locked"
+  | "self_excluded"
+  | "closed";
 
 export interface User {
   id: string;
+  username: string;
+  displayName: string;
   email: string;
   firstName: string;
   lastName: string;
@@ -35,32 +48,31 @@ export interface User {
 
 export interface SessionUser {
   id: string;
+  username: string;
   email: string;
+  displayName: string;
   firstName: string;
   lastName: string;
   role: UserRole;
   status: AccountStatus;
   kycStatus: KycStatus;
   locale: string;
+  /** True until the holder replaces an initial or administrator-set password. */
+  mustChangePassword: boolean;
 }
 
 /* ----------------------------------------------------------- responsible play */
 
 export type LimitPeriod = "daily" | "weekly" | "monthly";
 
-export type LimitKind =
-  | "deposit"
-  | "stake"
-  | "loss"
-  | "session_duration"
-  | "single_bet";
+export type LimitKind = "deposit" | "stake" | "loss" | "single_bet";
 
 export interface ResponsibleGamblingLimit {
   id: string;
   userId: string;
   kind: LimitKind;
   period: LimitPeriod;
-  /** Amount in minor-unit-free decimal, or minutes for session_duration. */
+  /** Amount in TND. */
   value: number;
   /** Consumed so far in the current window. */
   used: number;

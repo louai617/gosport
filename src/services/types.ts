@@ -184,13 +184,20 @@ export interface TransactionQuery {
   pageSize?: number;
   fromIso?: string;
   toIso?: string;
-  /** Matches the transaction reference. */
+  /** Matches the transaction reference or description. */
   search?: string;
+  sort?: string;
+  direction?: "asc" | "desc";
+  /** Absolute magnitude bounds, TND. */
+  minAmount?: number;
+  maxAmount?: number;
 }
 
 export interface MoneyMovementInput {
   methodId: string;
   amount: number;
+  /** Dedupes a retried or double-clicked request. */
+  idempotencyKey?: string;
 }
 
 /** What an adapter receives once the service has resolved account context. */

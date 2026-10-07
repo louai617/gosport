@@ -3,15 +3,32 @@ import type { PaymentMethod } from "@/types";
 /**
  * Payment-method catalogue.
  *
- * Every entry is `coming_soon` or `unavailable`, and every `provider` is
- * `"mock"`. No payment rail is integrated in this build, so nothing here may
- * be marked `available` — a method the user could select and believe would
- * work is exactly the misrepresentation this project must not make.
+ * Exactly one entry is `available`: payout through the operator. A withdrawal
+ * request holds the player's funds and waits in the operator's queue, where a
+ * person approves it and pays it out of band — no rail is integrated, and that
+ * is stated on the method itself. Every other entry is `coming_soon` or
+ * `unavailable` with provider `"mock"`: a method the user could select and
+ * believe would work is exactly the misrepresentation this project must not make.
  *
  * Card networks appear as a *category* ("International card"), not as a
  * branded integration, because no acquiring relationship exists.
  */
 export const PAYMENT_METHODS: PaymentMethod[] = [
+  {
+    id: "pm-operator-payout",
+    kind: "manual",
+    nameKey: "wallet.method.manual.name",
+    descriptionKey: "wallet.method.manual.description",
+    icon: "hand-coins",
+    status: "available",
+    supportsDeposit: false,
+    supportsWithdrawal: true,
+    minAmount: 1,
+    maxAmount: 1_000_000,
+    processingTimeKey: "wallet.processing.operator",
+    provider: "operator",
+    requiresKyc: false,
+  },
   {
     id: "pm-bank-transfer",
     kind: "bank_transfer",

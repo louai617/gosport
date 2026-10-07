@@ -6,6 +6,7 @@ import { formatDate, formatPhone } from "@/lib/format";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Avatar } from "@/components/ui/Avatar";
+import { ProfileForm } from "@/components/account/ProfileForm";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getT();
@@ -16,15 +17,11 @@ export default async function ProfilePage() {
   const [t, locale, user] = await Promise.all([getT(), getRequestLocale(), getUserProfile()]);
 
   const rows = [
+    { label: t("auth.field.username"), value: user.username },
     { label: t("auth.field.firstName"), value: user.firstName },
     { label: t("auth.field.lastName"), value: user.lastName },
     { label: t("auth.field.email"), value: user.email, verified: user.emailVerified },
-    {
-      label: t("auth.field.phone"),
-      value: formatPhone(user.phone),
-      verified: user.phoneVerified,
-    },
-    { label: t("auth.field.dateOfBirth"), value: formatDate(user.dateOfBirth, locale) },
+    { label: t("auth.field.dateOfBirth"), value: user.dateOfBirth ? formatDate(user.dateOfBirth, locale) : "—" },
     { label: t("auth.field.country"), value: t(`countries.${user.countryCode}`) },
   ];
 
@@ -36,20 +33,20 @@ export default async function ProfilePage() {
       </header>
 
       <div className="flex items-center gap-4 rounded-xl border border-line bg-surface p-4">
-        <Avatar name={`${user.firstName} ${user.lastName}`} size="lg" />
+        <Avatar name={user.displayName} size="lg" />
         <div className="min-w-0">
-          <p className="truncate text-h3 text-ink">
-            {user.firstName} {user.lastName}
-          </p>
+          <p className="truncate text-h3 text-ink">{user.displayName}</p>
           <p className="numeric mt-0.5 text-small text-ink-muted">
             {t("account.profile.memberSince", { date: formatDate(user.createdAt, locale) })}
           </p>
         </div>
       </div>
 
-      <Alert tone="warning" title={t("account.kyc.title")}>
-        {t("account.kyc.notStarted")}
-      </Alert>
+      {user.kycStatus !== "verified" ? (
+        <Alert tone="warning" title={t("account.kyc.title")}>
+          {t(`account.kyc.${user.kycStatus}`)}
+        </Alert>
+      ) : null}
 
       <section aria-labelledby="personal-heading">
         <h2 id="personal-heading" className="mb-3 text-h2 text-ink">
@@ -78,6 +75,13 @@ export default async function ProfilePage() {
         <p className="mt-3 text-caption normal-case tracking-normal text-ink-subtle">
           {t("account.profile.saveNotice")}
         </p>
+      </section>
+
+      <section aria-labelledby="edit-heading">
+        <h2 id="edit-heading" className="mb-3 text-h2 text-ink">
+          {t("account.profile.edit")}
+        </h2>
+        <ProfileForm displayName={user.displayName} phone={user.phone} />
       </section>
 
       <section aria-labelledby="prefs-heading">

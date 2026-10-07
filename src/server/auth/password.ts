@@ -1,34 +1,28 @@
+import "server-only";
+
+import { hash as argonHash, verify as argonVerify } from "@node-rs/argon2";
+
 /**
- * Password hashing boundary.
+ * Password hashing.
  *
- * ── NOT CONFIGURED IN THIS BUILD ──────────────────────────────────────────
- * `createHasher()` throws. There is no account store, no registration writes a
- * credential, and no login verifies one. A weak fallback (SHA-256, a fixed
- * salt, a "temporary" scrypt call with default parameters) would be worse than
- * nothing: it would look implemented, pass review, and ship. The refusal is
- * the design.
- * ──────────────────────────────────────────────────────────────────────────
+ * Argon2id through `@node-rs/argon2` (prebuilt native binaries — no compiler
+ * needed on a developer machine or on Vercel), with the OWASP baseline
+ * parameters recorded in `argon2idParams` below.
  *
- * Requirements a real implementation must meet:
+ * Rules this module enforces, and callers must not undo:
  *
- * 1. **Argon2id**, or bcrypt at cost ≥ 12 where Argon2 is unavailable. Never a
- *    bare hash function — SHA-256 and friends are fast by design, which is the
- *    opposite of what is wanted here.
- * 2. **Never log the plaintext**, not in a debug branch, not in an error
- *    message, not in a validation failure. `redact()` in `security/audit.ts`
- *    drops anything keyed like a password, and that is the last line, not the
- *    first.
- * 3. **Constant-time comparison** of the digest, which every mature library
- *    does internally — the caller's job is to not short-circuit around it. In
- *    particular, when the email is unknown, still run a verification against a
- *    dummy hash before returning: an early return turns login into a user
- *    enumeration oracle measurable over the network.
- * 4. **Rate-limited at the route** (`RATE_LIMITS.login`), because a memory-hard
- *    hash makes online guessing slow but not impossible, and because the
- *    hashing cost is itself a denial-of-service surface.
- * 5. **Re-hash on successful login** when `needsRehash` reports the stored
- *    parameters are below current policy — the plaintext is only available at
- *    that one moment, so it is the only chance to upgrade a credential.
+ * 1. **Never a bare hash.** SHA-256 and friends are fast by design, which is
+ *    the opposite of what is wanted for a password.
+ * 2. **Never log the plaintext** — not in a debug branch, an error message or a
+ *    validation failure. `redact()` in `security/audit.ts` drops any key that
+ *    looks like a password, and that is the last line, not the first.
+ * 3. **Constant-time behaviour.** The digest comparison is inside the library.
+ *    The caller's job (see `authService.login`) is to run `verifyAgainstDummy`
+ *    when the account does not exist, so "no such user" and "wrong password"
+ *    cost the same and login is not a user-enumeration oracle.
+ * 4. **Rehash on login.** `needsRehash` reports stored parameters below current
+ *    policy; the plaintext is only in hand at login, so that is the one
+ *    chance to upgrade a credential.
  */
 
 /** Encoded PHC-string hash, e.g. `$argon2id$v=19$m=19456,t=2,p=1$…$…`. */
@@ -64,28 +58,12 @@ export const argon2idParams = {
   saltLengthBytes: 16,
 } as const;
 
-/** Fallback algorithm floor, for a platform with no Argon2 binding available. */
-export const BCRYPT_MIN_COST = 12;
-
 /**
  * Upper bound on what reaches the hasher. `passwordSchema` already caps input
  * at 128 characters; this repeats it at the boundary because a megabyte of
  * "password" is a cheap way to occupy every worker in the pool.
  */
 export const MAX_PASSWORD_BYTES = 128;
-
-export class PasswordHasherUnavailableError extends Error {
-  readonly code = "password_hasher_unavailable";
-
-  constructor() {
-    super(
-      "Password hashing is not configured in this demo build. Install an Argon2id " +
-        "binding (or bcrypt at cost >= 12), implement PasswordHasher against it, and " +
-        "register it here before any credential is stored or verified.",
-    );
-    this.name = "PasswordHasherUnavailableError";
-  }
-}
 
 /* -------------------------------------------------------- PHC string parsing */
 
@@ -151,30 +129,59 @@ export function isBelowPolicy(stored: string): boolean {
 
 /* --------------------------------------------------------------- the factory */
 
-let hasher: PasswordHasher | null = null;
+function createArgon2Hasher(): PasswordHasher {
+  const options = {
+    memoryCost: argon2idParams.memoryCostKiB,
+    timeCost: argon2idParams.timeCost,
+    parallelism: argon2idParams.parallelism,
+    outputLen: argon2idParams.hashLengthBytes,
+  };
 
-/**
- * Registered once at boot by the deployment that supplies a real binding.
- * Kept as an injection point so the rest of `src/server` depends on the
- * interface and never on the library.
- */
+  return {
+    async hash(plaintext) {
+      assertWithinLimit(plaintext);
+      return argonHash(plaintext, options);
+    },
+    async verify(stored, plaintext) {
+      assertWithinLimit(plaintext);
+      try {
+        return await argonVerify(stored, plaintext);
+      } catch {
+        // A malformed stored value must read as "does not match", never as a 500
+        // that distinguishes this account from the rest.
+        return false;
+      }
+    },
+    needsRehash: isBelowPolicy,
+  };
+}
+
+function assertWithinLimit(plaintext: string): void {
+  if (Buffer.byteLength(plaintext, "utf8") > MAX_PASSWORD_BYTES * 4) {
+    // `passwordSchema` caps characters at 128; this is the backstop for a caller
+    // that skipped it. Four bytes is the widest UTF-8 character.
+    throw new RangeError("password exceeds the maximum accepted length");
+  }
+}
+
+let hasher: PasswordHasher = createArgon2Hasher();
+
+/** Replaces the hasher — used by tests that want a cheap one. Never in a request path. */
 export function setPasswordHasher(implementation: PasswordHasher): void {
   hasher = implementation;
 }
 
-/**
- * Returns the configured hasher.
- *
- * Throws in this build — see the module header. Callers must not catch this and
- * continue: a login route that treats "no hasher" as "password did not match"
- * is indistinguishable from one that treats it as "password matched" the day
- * someone inverts the condition.
- */
 export function createHasher(): PasswordHasher {
-  if (!hasher) throw new PasswordHasherUnavailableError();
   return hasher;
 }
 
-export function isPasswordHashingConfigured(): boolean {
-  return hasher !== null;
+let dummyHash: Promise<PasswordHash> | null = null;
+
+/**
+ * Verifies against a throw-away hash so a login for an unknown account spends
+ * the same time as one for a real account with a wrong password.
+ */
+export async function verifyAgainstDummy(plaintext: string): Promise<void> {
+  dummyHash ??= hasher.hash("sportgo-dummy-password-for-timing-equalisation");
+  await hasher.verify(await dummyHash, plaintext);
 }

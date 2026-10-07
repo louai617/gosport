@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   LogOut,
   Receipt,
+  Settings2,
   ShieldCheck,
   Wallet,
 } from "lucide-react";
@@ -42,7 +43,8 @@ const LINKS = [
  */
 export function AccountMenu({ user }: AccountMenuProps) {
   const t = useT();
-  const fullName = `${user.firstName} ${user.lastName}`;
+  const fullName = user.displayName || `${user.firstName} ${user.lastName}`.trim();
+  const isAdmin = user.role === "admin";
 
   return (
     <Dropdown
@@ -53,22 +55,28 @@ export function AccountMenu({ user }: AccountMenuProps) {
         <span className="flex h-9 items-center gap-2 rounded-md px-1 transition-colors duration-fast hover:bg-surface-2">
           <Avatar name={fullName} size="sm" />
           <span className="hidden max-w-24 truncate text-small font-medium text-ink xl:block">
-            {user.firstName}
+            {user.displayName || user.firstName}
           </span>
         </span>
       }
     >
       <DropdownLabel>{fullName}</DropdownLabel>
 
-      {LINKS.map((link) => (
-        <DropdownItem
-          key={link.href}
-          href={link.href}
-          icon={<link.icon size={15} aria-hidden="true" />}
-        >
-          {t(link.labelKey)}
+      {isAdmin ? (
+        <DropdownItem href="/admin" icon={<Settings2 size={15} aria-hidden="true" />}>
+          {t("nav.adminConsole")}
         </DropdownItem>
-      ))}
+      ) : (
+        LINKS.map((link) => (
+          <DropdownItem
+            key={link.href}
+            href={link.href}
+            icon={<link.icon size={15} aria-hidden="true" />}
+          >
+            {t(link.labelKey)}
+          </DropdownItem>
+        ))
+      )}
 
       <DropdownSeparator />
       <ThemeToggle variant="full" />

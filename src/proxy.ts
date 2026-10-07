@@ -71,6 +71,9 @@ export function proxy(request: NextRequest): NextResponse {
 
   const headers = new Headers(request.headers);
   headers.set("x-nonce", nonce);
+  // Lets server layouts know where they are (e.g. to allow the forced
+  // password-change page while every other page redirects to it).
+  headers.set("x-pathname", request.nextUrl.pathname);
   headers.set("x-request-id", requestId);
   headers.set("content-security-policy", policy);
 

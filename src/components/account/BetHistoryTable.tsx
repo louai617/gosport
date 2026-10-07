@@ -25,14 +25,14 @@ export interface BetHistoryTableProps {
   initialStatus?: BetStatus | "all";
 }
 
-const FILTERS: Array<BetStatus | "all"> = ["all", "pending", "won", "lost", "cancelled"];
+const FILTERS: Array<BetStatus | "all"> = ["all", "pending", "won", "lost", "void"];
 
 const FILTER_LABELS: Record<string, string> = {
   all: "account.bets.filter.all",
   pending: "account.bets.status.pending",
   won: "account.bets.status.won",
   lost: "account.bets.status.lost",
-  cancelled: "account.bets.status.cancelled",
+  void: "account.bets.status.void",
 };
 
 /**
@@ -99,6 +99,7 @@ export function BetHistoryTable({ bets, initialStatus = "all" }: BetHistoryTable
                 const isOpen = expanded === bet.id;
                 const multi = bet.selections.length > 1;
                 const first = bet.selections[0];
+                const casino = bet.kind === "casino";
 
                 const rows = [
                   <TR
@@ -117,25 +118,37 @@ export function BetHistoryTable({ bets, initialStatus = "all" }: BetHistoryTable
 
                     <TD>
                       <span className="block max-w-56 truncate">
-                        {multi
-                          ? t("account.bets.multipleLegs", { count: bet.selections.length })
-                          : (first?.eventLabel ?? "—")}
+                        {casino
+                          ? t(`games.title.${bet.gameKey}`)
+                          : multi
+                            ? t("account.bets.multipleLegs", { count: bet.selections.length })
+                            : (first?.eventLabel ?? "—")}
                       </span>
                       <span className="block max-w-56 truncate text-caption normal-case tracking-normal text-ink-subtle">
-                        {multi ? t(`betslip.mode.${bet.mode}`) : (first?.competitionLabel ?? "")}
+                        {casino
+                          ? t("account.bets.casinoRound")
+                          : multi
+                            ? t(`betslip.mode.${bet.mode}`)
+                            : (first?.competitionLabel ?? "")}
                       </span>
                     </TD>
 
                     <TD>
                       <span className="block max-w-44 truncate">
-                        {multi
-                          ? t("account.bets.viewLegs")
-                          : (first?.selectionLabel ?? "—")}
+                        {casino
+                          ? "—"
+                          : multi
+                            ? t("account.bets.viewLegs")
+                            : first
+                              ? first.selectionLabelKey
+                                ? t(first.selectionLabelKey, first.marketLine === undefined ? undefined : { line: first.marketLine })
+                                : first.selectionLabel
+                              : "—"}
                       </span>
                     </TD>
 
                     <TD align="end" numeric>
-                      {formatOdds(bet.totalOdds)}
+                      {casino || bet.totalOdds === 0 ? "—" : formatOdds(bet.totalOdds)}
                     </TD>
                     <TD align="end" numeric>
                       {formatAmount(bet.stake, locale)}
@@ -168,10 +181,13 @@ export function BetHistoryTable({ bets, initialStatus = "all" }: BetHistoryTable
                             >
                               <span className="min-w-0">
                                 <span className="block truncate text-small text-ink">
-                                  {selection.selectionLabel}
+                                  {selection.selectionLabelKey
+                                    ? t(selection.selectionLabelKey, selection.marketLine === undefined ? undefined : { line: selection.marketLine })
+                                    : selection.selectionLabel}
                                 </span>
                                 <span className="block truncate text-caption normal-case tracking-normal text-ink-subtle">
                                   {selection.eventLabel} · {t(selection.marketNameKey)}
+                                  {selection.marketLine === undefined ? "" : ` ${selection.marketLine}`}
                                 </span>
                               </span>
                               <span className="flex items-center gap-3">

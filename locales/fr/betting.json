@@ -49,5 +49,11 @@
   "betting.validation.systemSizeInvalid": "Sélectionnez un type de système valide",
   "betting.validation.tooManySelections": "Trop de sélections dans un seul panier",
   "betslip.empty.browse": "Parcourir les sports",
-  "betslip.demoNoticeShort": "Aucun argent en jeu — rien n'est misé ni versé."
+  "betslip.demoNoticeShort": "Aucun argent en jeu — rien n'est misé ni versé.",
+  "betslip.placeFailed": "Pari non placé",
+  "betslip.signInToBet": "Connectez-vous pour parier",
+  "betting.error.oddsChanged": "Les cotes ont changé. Vérifiez votre coupon et réessayez.",
+  "betting.error.selectionUnknown": "Une de vos sélections n’est plus disponible",
+  "betting.error.selectionUnavailable": "Une sélection est suspendue ou l’événement est terminé",
+  "betting.error.duplicateSelection": "La même sélection apparaît deux fois"
 }

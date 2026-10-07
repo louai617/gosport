@@ -1,50 +1,43 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import "server-only";
+
+import { randomUUID } from "node:crypto";
 
 import { cookies } from "next/headers";
 
-import { env, isDemo, isProduction } from "@/server/env";
-import { sha256Hex } from "@/server/security/sanitize";
+import { prisma } from "@/server/db";
+import { env, isProduction } from "@/server/env";
+import { hashToken, newToken } from "@/server/auth/tokens";
+import {
+  canHoldSession,
+  sessionUserInclude,
+  toSessionUser,
+} from "@/server/auth/sessionUser";
 import type { SessionUser } from "@/types/user";
 
 /**
  * Sessions.
  *
- * Opaque token in a cookie, session record on the server. Not a JWT: a
- * sportsbook has to be able to end a session *now* — a self-exclusion, a
- * support-initiated lock, a suspected account takeover — and a self-contained
- * token that is valid until it expires cannot be ended, only denied by a
- * revocation list, which is a session table with extra steps.
+ * An opaque token in a cookie and a row in the `Session` table. Not a JWT: a
+ * financial platform has to be able to end a session *now* — a suspension, a
+ * self-exclusion, a suspected takeover — and a self-contained token that is
+ * valid until it expires cannot be ended, only denied via a revocation list,
+ * which is a session table with extra steps.
  *
- * What is stored is the SHA-256 of the token, never the token. A session table
- * that leaks is then a list of digests: it identifies which accounts had
- * sessions, and nothing an attacker can present as one. The token is 32 random
- * bytes, so a plain unsalted digest is sufficient — there is no low-entropy
- * space to pre-compute.
+ * What is stored is the HMAC of the token (`hashToken`), never the token.
  *
- * ── DEMO ──────────────────────────────────────────────────────────────────
- * The store below is an in-process `Map`. Sessions vanish on restart and are
- * not shared between instances, which is correct for a build with no account
- * database. `setSessionStore` is the seam a Prisma-backed store slots into.
- * ──────────────────────────────────────────────────────────────────────────
+ * `readSession` returns the *current* user row, not a snapshot taken at login:
+ * a suspension or a role change takes effect on the very next request.
  */
-
-const TOKEN_BYTES = 32;
 
 export interface SessionRecord {
   id: string;
   userId: string;
-  /** SHA-256 of the cookie token, hex. The token itself is never persisted. */
-  tokenHash: string;
-  issuedAt: number;
-  lastSeenAt: number;
-  /** Idle deadline — extended while the session is used. */
-  idleExpiresAt: number;
-  /** Absolute deadline — fixed at issue, never extended. */
-  absoluteExpiresAt: number;
-  /** Salted digest from `hashIp`; the raw address is not kept. */
+  createdAt: Date;
+  lastSeenAt: Date;
+  idleExpiresAt: Date;
+  absoluteExpiresAt: Date;
   ipHash: string | null;
   userAgent: string | null;
-  revokedAt: number | null;
 }
 
 export interface ActiveSession {
@@ -60,90 +53,34 @@ export interface IssuedSession extends ActiveSession {
 export interface SessionContext {
   ipHash?: string | null;
   userAgent?: string | null;
-  /**
-   * Carried across a rotation. Rotating is a security measure, not a reason to
-   * grant the account another full absolute lifetime.
-   */
-  absoluteExpiresAt?: number;
+  /** Player-only "stay signed in": longer idle and absolute windows. */
+  remember?: boolean;
+  /** Carried across a rotation — rotating is not a reason to extend the life. */
+  absoluteExpiresAt?: Date;
 }
 
-/**
- * Persistence boundary.
- *
- * `findByTokenHash` returns the *current* user row, not a snapshot taken at
- * login. That distinction is a control, not an optimisation: a self-exclusion
- * or a role revocation has to take effect on the player's next request, not the
- * next time they happen to log in.
- */
-export interface SessionStore {
-  create(record: SessionRecord, user: SessionUser): Promise<void>;
-  findByTokenHash(tokenHash: string): Promise<ActiveSession | null>;
-  touch(id: string, lastSeenAt: number, idleExpiresAt: number): Promise<void>;
-  revoke(id: string): Promise<void>;
-  revokeAllForUser(userId: string): Promise<void>;
-}
+const REMEMBER_IDLE_SECONDS = 24 * 3600;
+const REMEMBER_ABSOLUTE_SECONDS = 7 * 24 * 3600;
 
-/**
- * DEMO ONLY. Single-process, non-durable, unbounded-by-design because the demo
- * has a handful of simulated accounts and no way to create more.
- */
-function createMemorySessionStore(): SessionStore {
-  const records = new Map<string, { record: SessionRecord; user: SessionUser }>();
-
-  return {
-    async create(record, user) {
-      records.set(record.tokenHash, { record, user });
-    },
-    async findByTokenHash(tokenHash) {
-      const entry = records.get(tokenHash);
-      return entry ? { record: { ...entry.record }, user: { ...entry.user } } : null;
-    },
-    async touch(id, lastSeenAt, idleExpiresAt) {
-      for (const entry of records.values()) {
-        if (entry.record.id !== id) continue;
-        entry.record.lastSeenAt = lastSeenAt;
-        entry.record.idleExpiresAt = idleExpiresAt;
-        return;
-      }
-    },
-    async revoke(id) {
-      for (const [hash, entry] of records) {
-        if (entry.record.id === id) records.delete(hash);
-      }
-    },
-    async revokeAllForUser(userId) {
-      for (const [hash, entry] of records) {
-        if (entry.record.userId === userId) records.delete(hash);
-      }
-    },
-  };
-}
-
-/**
- * The dev server re-evaluates modules on hot reload; without stashing the store
- * on `globalThis` every edit would silently sign the developer out.
- */
-const globalForSessions = globalThis as typeof globalThis & {
-  sportgoSessionStore?: SessionStore;
-};
-
-let store: SessionStore =
-  globalForSessions.sportgoSessionStore ?? createMemorySessionStore();
-
-if (!isProduction) globalForSessions.sportgoSessionStore = store;
-
-export function setSessionStore(next: SessionStore): void {
-  store = next;
+function lifetimes(role: SessionUser["role"], remember: boolean) {
+  if (role === "admin") {
+    return {
+      idle: env.ADMIN_SESSION_TTL_SECONDS,
+      absolute: env.ADMIN_SESSION_ABSOLUTE_TTL_SECONDS,
+    };
+  }
+  if (remember) {
+    return { idle: REMEMBER_IDLE_SECONDS, absolute: REMEMBER_ABSOLUTE_SECONDS };
+  }
+  return { idle: env.SESSION_TTL_SECONDS, absolute: env.SESSION_ABSOLUTE_TTL_SECONDS };
 }
 
 /* ------------------------------------------------------------------ cookie */
 
 /**
  * `sameSite: "lax"` rather than `strict`: a player following a link from a
- * results site or a shared bet slip must land already signed in, and `lax`
- * still withholds the cookie from cross-site `POST`s, which is the case that
- * matters. `secure` is off in development only because the dev server is
- * plain http on localhost.
+ * results site must land already signed in, and `lax` still withholds the
+ * cookie from cross-site `POST`s, which is the case that matters.
  */
 function sessionCookieOptions(maxAgeSeconds: number) {
   return {
@@ -155,104 +92,103 @@ function sessionCookieOptions(maxAgeSeconds: number) {
   };
 }
 
-function tokenHashOf(token: string): string {
-  return sha256Hex(token);
-}
-
-/** Remaining cookie lifetime: the idle window, clipped by the absolute one. */
-function cookieLifetime(now: number, absoluteExpiresAt: number): number {
-  const idle = env.SESSION_TTL_SECONDS;
-  const untilAbsolute = Math.floor((absoluteExpiresAt - now) / 1000);
-  return Math.min(idle, Math.max(0, untilAbsolute));
+function cookieLifetime(now: number, idleSeconds: number, absoluteExpiresAt: Date): number {
+  const untilAbsolute = Math.floor((absoluteExpiresAt.getTime() - now) / 1000);
+  return Math.min(idleSeconds, Math.max(0, untilAbsolute));
 }
 
 /* ------------------------------------------------------------------- issue */
 
 /**
- * Creates a session and sets the cookie.
- *
- * Route handlers and server actions only — a server component cannot write a
- * cookie, and calling this from one throws inside Next rather than silently
- * doing nothing.
+ * Creates a session and sets the cookie. Route handlers and server actions
+ * only — a server component cannot write a cookie.
  */
 export async function issueSession(
-  user: SessionUser,
+  user: Pick<SessionUser, "id" | "role">,
   context: SessionContext = {},
-): Promise<IssuedSession> {
-  const token = randomBytes(TOKEN_BYTES).toString("base64url");
+): Promise<{ token: string; sessionId: string }> {
+  const token = newToken();
   const now = Date.now();
-  const absoluteExpiresAt =
-    context.absoluteExpiresAt ?? now + env.SESSION_ABSOLUTE_TTL_SECONDS * 1000;
+  const { idle, absolute } = lifetimes(user.role, context.remember ?? false);
+  const absoluteExpiresAt = context.absoluteExpiresAt ?? new Date(now + absolute * 1000);
+  const idleExpiresAt = new Date(Math.min(now + idle * 1000, absoluteExpiresAt.getTime()));
 
-  const record: SessionRecord = {
-    id: randomUUID(),
-    userId: user.id,
-    tokenHash: tokenHashOf(token),
-    issuedAt: now,
-    lastSeenAt: now,
-    idleExpiresAt: Math.min(now + env.SESSION_TTL_SECONDS * 1000, absoluteExpiresAt),
-    absoluteExpiresAt,
-    ipHash: context.ipHash ?? null,
-    userAgent: context.userAgent ?? null,
-    revokedAt: null,
-  };
-
-  await store.create(record, user);
+  const session = await prisma.session.create({
+    data: {
+      id: randomUUID(),
+      userId: user.id,
+      tokenHash: hashToken(token),
+      idleExpiresAt,
+      absoluteExpiresAt,
+      ipHash: context.ipHash ?? null,
+      userAgent: context.userAgent?.slice(0, 300) ?? null,
+    },
+    select: { id: true },
+  });
 
   const jar = await cookies();
-  jar.set(
-    env.SESSION_COOKIE_NAME,
-    token,
-    sessionCookieOptions(cookieLifetime(now, record.absoluteExpiresAt)),
-  );
+  jar.set(env.SESSION_COOKIE_NAME, token, sessionCookieOptions(cookieLifetime(now, idle, absoluteExpiresAt)));
 
-  return { token, record, user };
+  return { token, sessionId: session.id };
 }
 
 /* -------------------------------------------------------------------- read */
 
-/**
- * Writing back on every request would put a database round-trip on the hot path
- * of a page that is otherwise pure reads. Half the idle window is a long way
- * from the deadline and cheap enough.
- */
+/** Half the idle window is far from the deadline and keeps the hot path write-free. */
 const TOUCH_THRESHOLD = 0.5;
 
 /**
  * Resolves the current session, or `null`.
  *
- * Two independent deadlines are enforced here. **Idle** expiry ends a session
- * that has gone quiet — the shared-computer case. **Absolute** expiry ends it
- * regardless of activity, so a stolen token has a bounded life however busy the
- * thief keeps it. Neither is extended by the other.
+ * **Idle** expiry ends a session that has gone quiet — the shared-computer
+ * case. **Absolute** expiry ends it regardless of activity, so a stolen token
+ * has a bounded life however busy the thief keeps it.
  *
  * Safe to call from a server component: it only reads the cookie, and the
- * refresh below is skipped when the response is no longer writable.
+ * sliding refresh is skipped when the response is not writable.
  */
 export async function readSession(): Promise<ActiveSession | null> {
   const jar = await cookies();
   const token = jar.get(env.SESSION_COOKIE_NAME)?.value;
   if (!token) return null;
 
-  const found = await store.findByTokenHash(tokenHashOf(token));
-  if (!found) return null;
+  const now = new Date();
+  const row = await prisma.session.findUnique({
+    where: { tokenHash: hashToken(token) },
+    include: { user: { include: sessionUserInclude(now) } },
+  });
+  if (!row || row.revokedAt) return null;
 
-  const { record, user } = found;
-  const now = Date.now();
+  const user = toSessionUser(row.user);
 
-  if (record.revokedAt !== null) return null;
-  if (now >= record.absoluteExpiresAt || now >= record.idleExpiresAt) {
-    await store.revoke(record.id);
+  if (
+    now >= row.absoluteExpiresAt ||
+    now >= row.idleExpiresAt ||
+    !canHoldSession(user.status)
+  ) {
+    await prisma.session
+      .update({
+        where: { id: row.id },
+        data: { revokedAt: now, revokedReason: "expired_or_blocked" },
+      })
+      .catch(() => undefined);
     return null;
   }
 
-  const elapsed = now - record.lastSeenAt;
-  const idleWindow = env.SESSION_TTL_SECONDS * 1000;
-  if (elapsed > idleWindow * TOUCH_THRESHOLD) {
-    const idleExpiresAt = Math.min(now + idleWindow, record.absoluteExpiresAt);
-    await store.touch(record.id, now, idleExpiresAt);
-    record.lastSeenAt = now;
-    record.idleExpiresAt = idleExpiresAt;
+  const idleSeconds = lifetimes(user.role, false).idle;
+  const elapsed = now.getTime() - row.lastSeenAt.getTime();
+  const longestIdle = row.idleExpiresAt.getTime() - row.lastSeenAt.getTime();
+  const window = Math.max(idleSeconds * 1000, longestIdle);
+
+  if (elapsed > window * TOUCH_THRESHOLD) {
+    const idleExpiresAt = new Date(
+      Math.min(now.getTime() + window, row.absoluteExpiresAt.getTime()),
+    );
+    await prisma.session
+      .update({ where: { id: row.id }, data: { lastSeenAt: now, idleExpiresAt } })
+      .catch(() => undefined);
+    row.lastSeenAt = now;
+    row.idleExpiresAt = idleExpiresAt;
 
     // A server component may not mutate cookies; the sliding cookie is a
     // convenience and its absence only costs the user an earlier sign-out.
@@ -260,66 +196,134 @@ export async function readSession(): Promise<ActiveSession | null> {
       jar.set(
         env.SESSION_COOKIE_NAME,
         token,
-        sessionCookieOptions(cookieLifetime(now, record.absoluteExpiresAt)),
+        sessionCookieOptions(cookieLifetime(now.getTime(), window / 1000, row.absoluteExpiresAt)),
       );
     } catch {
       /* read-only context */
     }
   }
 
-  return { record, user };
+  return {
+    record: {
+      id: row.id,
+      userId: row.userId,
+      createdAt: row.createdAt,
+      lastSeenAt: row.lastSeenAt,
+      idleExpiresAt: row.idleExpiresAt,
+      absoluteExpiresAt: row.absoluteExpiresAt,
+      ipHash: row.ipHash,
+      userAgent: row.userAgent,
+    },
+    user,
+  };
 }
 
 /* ------------------------------------------------------------------ revoke */
 
 /** Ends the current session and clears the cookie. Idempotent. */
-export async function revokeSession(): Promise<void> {
+export async function revokeSession(reason = "logout"): Promise<void> {
   const jar = await cookies();
   const token = jar.get(env.SESSION_COOKIE_NAME)?.value;
 
   if (token) {
-    const found = await store.findByTokenHash(tokenHashOf(token));
-    if (found) await store.revoke(found.record.id);
+    await prisma.session.updateMany({
+      where: { tokenHash: hashToken(token), revokedAt: null },
+      data: { revokedAt: new Date(), revokedReason: reason },
+    });
   }
 
   jar.delete(env.SESSION_COOKIE_NAME);
 }
 
-/** Ends every session for one account — password change, support lock, fraud. */
-export async function revokeAllSessions(userId: string): Promise<void> {
-  await store.revokeAllForUser(userId);
+/**
+ * Ends every session for one account — password change, suspension, fraud.
+ * `exceptSessionId` keeps the caller signed in when they are the one acting.
+ */
+export async function revokeAllSessions(
+  userId: string,
+  options: { exceptSessionId?: string; reason?: string } = {},
+): Promise<number> {
+  const result = await prisma.session.updateMany({
+    where: {
+      userId,
+      revokedAt: null,
+      ...(options.exceptSessionId ? { NOT: { id: options.exceptSessionId } } : {}),
+    },
+    data: { revokedAt: new Date(), revokedReason: options.reason ?? "revoked" },
+  });
+  return result.count;
+}
+
+/** Revokes one session, but only if it belongs to `userId`. */
+export async function revokeSessionById(
+  userId: string,
+  sessionId: string,
+  reason = "revoked_by_user",
+): Promise<boolean> {
+  const result = await prisma.session.updateMany({
+    where: { id: sessionId, userId, revokedAt: null },
+    data: { revokedAt: new Date(), revokedReason: reason },
+  });
+  return result.count > 0;
 }
 
 /**
  * Replaces the current session token with a new one, keeping the account.
  *
- * Must be called on every privilege change: immediately after a successful
- * login, after a password or email change, after enabling or disabling 2FA, and
- * after any role change. A token that was valid before the change and stays
- * valid after it is session fixation — an attacker who plants a known token in
- * the victim's browser pre-authentication inherits the authenticated session
- * the moment the victim signs in.
- *
- * The absolute deadline is deliberately inherited rather than reset: rotating
- * is not a reason to extend how long the session may live.
+ * Must be called on every privilege change — after login, after a password
+ * change. A token that was valid before the change and stays valid after it is
+ * session fixation. The absolute deadline is inherited, not reset.
  */
-export async function rotateSession(user?: SessionUser): Promise<IssuedSession | null> {
+export async function rotateSession(): Promise<boolean> {
   const current = await readSession();
-  if (!current) return null;
+  if (!current) return false;
 
-  await store.revoke(current.record.id);
+  await prisma.session.update({
+    where: { id: current.record.id },
+    data: { revokedAt: new Date(), revokedReason: "rotated" },
+  });
 
-  return issueSession(user ?? current.user, {
+  await issueSession(current.user, {
     ipHash: current.record.ipHash,
     userAgent: current.record.userAgent,
     absoluteExpiresAt: current.record.absoluteExpiresAt,
   });
+  return true;
 }
 
-/** Surfaced to the account "active sessions" screen so it can label the truth. */
+export interface SessionSummary {
+  id: string;
+  createdAt: Date;
+  lastSeenAt: Date;
+  userAgent: string | null;
+  current: boolean;
+}
+
+/** Active sessions for the account-security screen. */
+export async function listActiveSessions(
+  userId: string,
+  currentSessionId?: string,
+): Promise<SessionSummary[]> {
+  const now = new Date();
+  const rows = await prisma.session.findMany({
+    where: {
+      userId,
+      revokedAt: null,
+      absoluteExpiresAt: { gt: now },
+      idleExpiresAt: { gt: now },
+    },
+    orderBy: { lastSeenAt: "desc" },
+    take: 50,
+    select: { id: true, createdAt: true, lastSeenAt: true, userAgent: true },
+  });
+  return rows.map((row) => ({ ...row, current: row.id === currentSessionId }));
+}
+
 export const sessionEnvironment = {
   mode: env.APP_MODE,
-  durable: !isDemo,
+  durable: true,
   idleTimeoutSeconds: env.SESSION_TTL_SECONDS,
   absoluteTimeoutSeconds: env.SESSION_ABSOLUTE_TTL_SECONDS,
+  adminIdleTimeoutSeconds: env.ADMIN_SESSION_TTL_SECONDS,
+  adminAbsoluteTimeoutSeconds: env.ADMIN_SESSION_ABSOLUTE_TTL_SECONDS,
 } as const;

@@ -59,6 +59,14 @@ const baseSchema = z.object({
     .min(3600)
     .max(2_592_000)
     .default(86_400),
+  /** Administrators get a tighter idle window than players. */
+  ADMIN_SESSION_TTL_SECONDS: z.coerce.number().int().min(300).max(86_400).default(1800),
+  ADMIN_SESSION_ABSOLUTE_TTL_SECONDS: z.coerce
+    .number()
+    .int()
+    .min(3600)
+    .max(2_592_000)
+    .default(28_800),
   CSRF_COOKIE_NAME: z.string().min(1).default("sportgo_csrf"),
 
   /**
@@ -165,6 +173,8 @@ const rawEnv = {
   SESSION_COOKIE_NAME: present(process.env.SESSION_COOKIE_NAME),
   SESSION_TTL_SECONDS: present(process.env.SESSION_TTL_SECONDS),
   SESSION_ABSOLUTE_TTL_SECONDS: present(process.env.SESSION_ABSOLUTE_TTL_SECONDS),
+  ADMIN_SESSION_TTL_SECONDS: present(process.env.ADMIN_SESSION_TTL_SECONDS),
+  ADMIN_SESSION_ABSOLUTE_TTL_SECONDS: present(process.env.ADMIN_SESSION_ABSOLUTE_TTL_SECONDS),
   CSRF_COOKIE_NAME: present(process.env.CSRF_COOKIE_NAME),
   PII_HASH_SALT: present(process.env.PII_HASH_SALT),
 
@@ -223,3 +233,24 @@ export const isProduction = env.NODE_ENV === "production";
  */
 export const piiHashSalt: string =
   env.PII_HASH_SALT ?? env.SESSION_SECRET ?? "sportgo-demo-salt-not-for-production";
+
+/**
+ * HMAC key for session and one-time-token digests.
+ *
+ * Resolved lazily, not at import: `next build` imports every route module, and a
+ * build machine rightly has no production secret. The check fires on the first
+ * request that actually needs it.
+ */
+export function sessionSecret(): string {
+  if (env.SESSION_SECRET) return env.SESSION_SECRET;
+
+  if (process.env.VERCEL || env.APP_MODE === "live") {
+    throw new Error(
+      "SESSION_SECRET is not set. Generate one with `openssl rand -base64 48` and add it " +
+        "to the environment (see docs/DEPLOYMENT.md).",
+    );
+  }
+
+  // Local development only — a fixed value so a restart does not sign everyone out.
+  return "sportgo-dev-session-secret-do-not-use-in-production";
+}

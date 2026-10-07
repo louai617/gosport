@@ -1,9 +1,17 @@
 import { SiteShell } from "@/components/layout/SiteShell";
 import { AccountNav } from "@/components/account/AccountNav";
+import { requirePageUser } from "@/server/auth/pageGuard";
 
-export default function AccountLayout({
+/**
+ * Everything under the account shell is the signed-in player's own. A visitor
+ * without a session is sent to sign in; this is the convenience layer — every
+ * service these pages call re-checks the session itself.
+ */
+export default async function AccountLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  await requirePageUser();
+
   return (
     <SiteShell>
       <div className="mx-auto grid max-w-[1440px] gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[236px_minmax(0,1fr)] lg:px-8 lg:py-8">

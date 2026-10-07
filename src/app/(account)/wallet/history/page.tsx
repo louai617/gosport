@@ -1,29 +1,6 @@
-import type { Metadata } from "next";
-import { getTransactions } from "@/services/paymentService";
-import { getT } from "@/i18n/server";
-import { TransactionTable } from "@/components/wallet/TransactionTable";
+import { redirect } from "next/navigation";
 
-export async function generateMetadata(): Promise<Metadata> {
-  const t = await getT();
-  return { title: t("wallet.history.title") };
-}
-
-export default async function WalletHistoryPage() {
-  const [t, transactions] = await Promise.all([
-    getT(),
-    getTransactions({ pageSize: 100 }),
-  ]);
-
-  return (
-    <div className="space-y-5">
-      <header>
-        <h1 className="text-h1 text-ink">{t("wallet.history.title")}</h1>
-        <p className="mt-1 text-small text-ink-muted">
-          {t("account.transactions.description")}
-        </p>
-      </header>
-
-      <TransactionTable transactions={transactions} />
-    </div>
-  );
+/** The wallet's history is the account transactions view; one table, one URL. */
+export default function WalletHistoryPage() {
+  redirect("/account/transactions");
 }

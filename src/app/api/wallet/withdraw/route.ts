@@ -1,26 +1,21 @@
 import { withdrawalSchema } from "@/lib/validation";
 import { createWithdrawal } from "@/services/paymentService";
-import { demoBlocked, ok, withRoute } from "@/server/api";
+import { fail, ok, withRoute } from "@/server/api";
 
 /**
  * POST /api/wallet/withdraw
  *
- * Refuses, for the same reason as the deposit route. A real withdrawal path
- * additionally requires a verified account, source-of-funds checks where
- * thresholds apply, and a self-exclusion check before the payout is queued.
+ * Holds the funds and queues the request for an operator. Nothing is paid out
+ * automatically — there is no payout provider. Refused for a restricted account,
+ * in maintenance, or when the balance does not cover it.
  */
 export const POST = withRoute(
   async ({ input }) => {
     const result = await createWithdrawal(input);
     if (!result.ok) {
-      return demoBlocked(result.errorKey ?? "wallet.error.demoModeNoProvider");
+      return fail("bad_request", result.errorKey ?? "common.error.unexpected", { status: 422 });
     }
-    return ok(result);
+    return ok({ reference: result.intentId, status: result.status }, { status: 201 });
   },
-  {
-    schema: withdrawalSchema,
-    auth: "user",
-    rateLimit: "deposit",
-    audit: "wallet.withdrawal_requested",
-  },
+  { schema: withdrawalSchema, auth: "user", rateLimit: "deposit" },
 );

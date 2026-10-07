@@ -31,7 +31,7 @@ export default async function AccountOverviewPage() {
     <div className="space-y-6">
       <header>
         <h1 className="text-h1 text-ink">
-          {t("account.overview.greeting", { name: overview.user.firstName })}
+          {t("account.overview.greeting", { name: overview.user.displayName })}
         </h1>
         <p className="mt-1 text-small text-ink-muted">
           {t("account.overview.description")}
@@ -40,9 +40,11 @@ export default async function AccountOverviewPage() {
 
       {/* Verification status is a fact about the account, so it is stated on
           the account, not only in the docs. */}
-      <Alert tone="warning" title={t("account.kyc.title")}>
-        {t("account.kyc.notStarted")}
-      </Alert>
+      {overview.user.kycStatus !== "verified" ? (
+        <Alert tone="warning" title={t("account.kyc.title")}>
+          {t(`account.kyc.${overview.user.kycStatus}`)}
+        </Alert>
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
         <BalanceCard wallet={overview.wallet} />
