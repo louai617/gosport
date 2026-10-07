@@ -7,6 +7,7 @@ import { formatAmount } from "@/lib/format";
 import { round2 } from "@/lib/games/constants";
 import { PLINKO_ROWS, buildPlinkoTable, type PlinkoDrop } from "@/lib/games/plinko";
 import { useI18n } from "@/i18n/I18nProvider";
+import { Alert } from "@/components/ui/Alert";
 import { useWallet } from "@/components/wallet/WalletProvider";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { StakePanel } from "./StakePanel";
@@ -22,7 +23,7 @@ const STEP_MS = 90;
  */
 export function PlinkoBoard() {
   const { t, locale } = useI18n();
-  const { balance, ready, play } = useWallet();
+  const { ready, play } = useWallet();
   const [error, setError] = useState<string | null>(null);
 
   const [stake, setStake] = useState(1);
@@ -85,6 +86,11 @@ export function PlinkoBoard() {
   return (
     <>
       <section className="rounded-xl border border-line bg-surface p-4 sm:p-5">
+        {error ? (
+          <Alert tone="danger" className="mb-4">
+            {t(error)}
+          </Alert>
+        ) : null}
         <div className="relative mx-auto max-w-lg">
           {/* Pegs */}
           <div className="flex flex-col items-center gap-1.5 py-2">

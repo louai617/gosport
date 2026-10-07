@@ -9,7 +9,6 @@ import { outcomeShortLabel } from "@/lib/selection";
 import { useI18n } from "@/i18n/I18nProvider";
 import { TeamCrest } from "@/components/brand/TeamCrest";
 import { OddsButton } from "@/components/betting/OddsButton";
-import { ScoreBoard } from "./ScoreBoard";
 import { LiveIndicator } from "./LiveIndicator";
 
 /** Explicit map rather than a concatenated key, so the audit can see them. */

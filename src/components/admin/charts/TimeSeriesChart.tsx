@@ -231,7 +231,8 @@ export function TimeSeriesChart({
                     key={start}
                     x={x(index)}
                     y={HEIGHT - 8}
-                    textAnchor="middle"
+                    // The last label of a line chart sits on the right edge; centred, half of it is clipped.
+                    textAnchor={kind === "line" && index === count - 1 ? "end" : "middle"}
                     className="fill-ink-subtle"
                     fontSize={11}
                   >

@@ -387,7 +387,7 @@ export async function assertWagerAllowed(
 ): Promise<void> {
   assertCanWager(user);
 
-  if (await getSetting("general.maintenanceMode")) blocked("auth.error.maintenance");
+  if (await getSetting("general.maintenanceMode", db)) blocked("auth.error.maintenance");
 
   const profile = await db.playerProfile.findUnique({
     where: { userId: user.id },
@@ -396,7 +396,7 @@ export async function assertWagerAllowed(
   if (profile?.wageringBlocked) blocked("account.error.wageringBlocked");
 
   if (
-    (await getSetting("players.requireVerificationToWager")) &&
+    (await getSetting("players.requireVerificationToWager", db)) &&
     profile?.kycStatus !== "VERIFIED"
   ) {
     blocked("account.error.verificationRequired");

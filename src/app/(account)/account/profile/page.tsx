@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { JURISDICTION } from "@/config/app.config";
 import { getUserProfile } from "@/services/userService";
 import { getRequestLocale, getT } from "@/i18n/server";
-import { formatDate, formatPhone } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Avatar } from "@/components/ui/Avatar";

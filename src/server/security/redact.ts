@@ -73,7 +73,14 @@ export function redact(value: unknown, depth = 0): unknown {
   }
 
   if (value instanceof Error) {
-    return { name: value.name, message: redact(value.message, depth + 1) };
+    // Driver errors carry their diagnosis in `code` (Prisma P-codes), which the
+    // message alone truncates away.
+    const code = (value as { code?: unknown }).code;
+    return {
+      name: value.name,
+      ...(typeof code === "string" ? { code } : {}),
+      message: redact(value.message, depth + 1),
+    };
   }
 
   if (typeof value === "object") {

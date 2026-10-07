@@ -17,7 +17,7 @@ import { hashString } from "./rng";
 
 export type SportSeed = Omit<Sport, "eventCount" | "liveEventCount">;
 
-export interface CompetitionSeed extends Omit<Competition, "eventCount" | "liveEventCount"> {}
+export type CompetitionSeed = Omit<Competition, "eventCount" | "liveEventCount">;
 
 /** Landing sport when no other is selected. */
 export const DEFAULT_SPORT_KEY: SportKey = "football";

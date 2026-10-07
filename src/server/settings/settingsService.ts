@@ -2,7 +2,7 @@ import "server-only";
 
 import { z } from "zod";
 
-import { prisma } from "@/server/db";
+import { prisma, type DbClient } from "@/server/db";
 import { requirePermission } from "@/server/auth/guard";
 import { audit } from "@/server/security/audit";
 import {
@@ -45,11 +45,11 @@ function schemaFor(definition: SettingDefinition): z.ZodType<unknown> {
   }
 }
 
-async function loadAll(): Promise<Map<string, unknown>> {
+async function loadAll(db: DbClient = prisma): Promise<Map<string, unknown>> {
   const cached = globalForSettings.sportgoSettings;
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.values;
 
-  const rows = await prisma.setting.findMany();
+  const rows = await db.setting.findMany();
   const stored = new Map(rows.map((row) => [row.key, row.value as unknown]));
 
   const values = new Map<string, unknown>();
@@ -63,8 +63,16 @@ async function loadAll(): Promise<Map<string, unknown>> {
   return values;
 }
 
-export async function getSetting<K extends SettingKey>(key: K): Promise<SettingValue<K>> {
-  return (await loadAll()).get(key) as SettingValue<K>;
+/**
+ * Pass `db` when calling from inside a transaction. On SQLite the transaction
+ * owns the only connection, so a read through the global client would wait on
+ * a lock the caller is itself holding — a deadlock that surfaces as P2028.
+ */
+export async function getSetting<K extends SettingKey>(
+  key: K,
+  db: DbClient = prisma,
+): Promise<SettingValue<K>> {
+  return (await loadAll(db)).get(key) as SettingValue<K>;
 }
 
 /** Every setting with its effective value, for the admin screen. */

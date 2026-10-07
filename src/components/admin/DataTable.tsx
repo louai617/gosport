@@ -192,6 +192,7 @@ export function DataTable<Row>({
         ) : null}
       </div>
 
+      {/* The table inside scrolls sideways on a narrow screen (cells do not wrap). */}
       <div className="overflow-hidden rounded-xl border border-line bg-surface">
         <Table>
           <THead>
@@ -230,7 +231,7 @@ export function DataTable<Row>({
                       key={column.key}
                       align={column.align}
                       numeric={column.numeric}
-                      className={cn(column.secondary && "hidden md:table-cell")}
+                      className={cn("whitespace-nowrap", column.secondary && "hidden md:table-cell")}
                     >
                       {column.render(row)}
                     </TD>

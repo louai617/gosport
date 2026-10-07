@@ -46,7 +46,12 @@ export function AdjustmentForm({
       submitLabel={needsApproval ? t("admin.wallet.requestApproval") : t("admin.wallet.apply")}
       onSuccess={(state) => {
         // A fresh key for the next adjustment once this one has gone through.
-        if (state.ok) queueMicrotask(() => setKey(newIdempotencyKey()));
+        if (state.ok) {
+          queueMicrotask(() => {
+            setKey(newIdempotencyKey());
+            setAmount("");
+          });
+        }
         return state.data?.reference ? (
           <span className="numeric mt-1 block text-small">
             {t("admin.wallet.reference")}: {String(state.data.reference)}

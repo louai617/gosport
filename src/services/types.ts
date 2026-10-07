@@ -3,12 +3,9 @@ import type {
   RegisterInput as ValidatedRegisterInput,
 } from "@/lib/validation";
 import type {
-  AccountStatus,
   Bet,
   BetStatus,
   EventStatus,
-  FavoriteKind,
-  KycStatus,
   LimitKind,
   LimitPeriod,
   NotificationKind,
@@ -121,11 +118,6 @@ export interface NotificationQuery {
   limit?: number;
 }
 
-export interface FavoriteToggleResult extends ActionResult {
-  /** State after the toggle. */
-  favorited: boolean;
-}
-
 /* ------------------------------------------------------- responsible gambling */
 
 export interface LimitChangeInput {
@@ -230,28 +222,6 @@ export interface PromotionQuery {
 
 /* --------------------------------------------------------------------- admin */
 
-export interface AdminStats {
-  registeredUsers: number;
-  activeUsers24h: number;
-  liveEvents: number;
-  scheduledEvents: number;
-  pendingTransactions: number;
-  openBets: number;
-  /** Sum of every simulated stake in the sandbox ledger. Not revenue. */
-  totalStakeSimulated: number;
-  systemStatus: "operational" | "degraded" | "maintenance";
-}
-
-export interface AdminUserQuery {
-  status?: AccountStatus | AccountStatus[];
-  kycStatus?: KycStatus | KycStatus[];
-}
-
-export interface AdminEventQuery {
-  sportId?: string;
-  status?: EventStatus | EventStatus[];
-}
-
 /** Case surfaced on the operator's responsible-gambling queue. */
 export interface ResponsibleGamblingCase {
   id: string;
@@ -263,32 +233,4 @@ export interface ResponsibleGamblingCase {
   detail: string;
   createdAt: string;
   severity: "low" | "medium" | "high";
-}
-
-export interface AdminEventInput {
-  sportId: string;
-  competitionId: string;
-  homeTeamId: string;
-  awayTeamId: string;
-  /** ISO-8601 kick-off. */
-  startTime: string;
-  status?: EventStatus;
-  featured?: boolean;
-}
-
-export interface AdminPromotionInput {
-  slug: string;
-  kind: PromotionKind;
-  titleKey: string;
-  summaryKey: string;
-  descriptionKey: string;
-  eligibilityKeys: string[];
-  termsKeys: string[];
-  startsAt: string;
-  endsAt: string | null;
-  ctaHref: string;
-  ctaLabelKey: string;
-  hue: number;
-  featured: boolean;
-  status?: PromotionStatus;
 }

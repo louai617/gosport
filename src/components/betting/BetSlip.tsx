@@ -248,6 +248,8 @@ export function BetSlip({ showHeader = true, className }: BetSlipProps) {
               </fieldset>
             ) : null}
 
+            {/* Only a guest needs the prompt; a signed-in player has already done it. */}
+            {ready && !signedIn ? (
             <p className="mt-3 text-center text-caption normal-case tracking-normal text-ink-subtle">
               {t("betslip.authPrompt")}{" "}
               <Link
@@ -264,6 +266,7 @@ export function BetSlip({ showHeader = true, className }: BetSlipProps) {
                 {t("nav.register")}
               </Link>
             </p>
+            ) : null}
           </div>
 
           <div className="shrink-0 space-y-3 border-t border-line px-4 py-3">

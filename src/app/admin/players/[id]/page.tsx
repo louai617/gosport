@@ -174,6 +174,11 @@ export default async function AdminPlayerPage({ params, searchParams }: PageProp
   );
 }
 
+/** A break is in force until its end date. Read outside the component so render stays pure. */
+function entryActive(endsAt: string | null): boolean {
+  return endsAt === null || Date.parse(endsAt) > Date.now();
+}
+
 async function WalletTab({ playerId, username, canAdjust }: { playerId: string; username: string; canAdjust: boolean }) {
   const [t, locale, summary, allowed, maxAmount, threshold] = await Promise.all([
     getAdminT(),
@@ -344,7 +349,7 @@ async function ResponsibleTab({ playerId }: { playerId: string }) {
         ) : (
           <ul className="divide-y divide-line-soft overflow-hidden rounded-xl border border-line bg-surface">
             {rg.exclusions.map((entry) => {
-              const active = entry.endsAt === null || Date.parse(entry.endsAt) > Date.now();
+              const active = entryActive(entry.endsAt);
               return (
                 <li key={entry.id} className="flex flex-wrap items-baseline justify-between gap-2 px-4 py-3">
                   <span className="text-small text-ink">

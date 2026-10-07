@@ -5,9 +5,11 @@ for a product that may lawfully take bets.
 
 ## What this build is
 
-An interface and architecture study. It renders a sportsbook, a bet slip, an
-account area, a wallet and an operator console using a deterministic mock
-dataset. It contains no gambling operation.
+A working platform on **demo credits**: player and administrator accounts, a
+credit ledger, a sportsbook and eight casino games that settle on the server,
+responsible-gambling controls enforced server-side, an administration console and
+an immutable audit trail. Accounts, balances, bets and transactions are real
+database records.
 
 ## What this build is not
 
@@ -15,17 +17,21 @@ dataset. It contains no gambling operation.
   jurisdiction. `compliance.licence` in `src/config/app.config.ts` is `null` and
   must stay null until a licence actually exists. No licence number, regulator
   name or certification mark appears anywhere in the codebase.
-- It does **not** verify anyone's age. The registration form asks the user to
-  confirm they are of legal age. That is a self-declaration and the code says so
-  in `src/lib/validation.ts`. It is not age verification and must never be
-  presented as one.
-- It does **not** process payments. `paymentService.createDeposit` and
-  `createWithdrawal` refuse in demo mode and return
-  `wallet.error.demoModeNoProvider`. No provider credential exists in the repo.
-- It does **not** accept wagers. Placing a slip records a local simulated ticket
-  and clears the slip. No balance moves, nothing is persisted server-side.
-- Balances, transactions, odds and bets shown anywhere are simulated and are
-  labelled as such at the point of display.
+- It does **not** verify anyone's age or identity. The registration form asks the
+  user to confirm they are of legal age — a self-declaration, as
+  `src/lib/validation.ts` says. `kycStatus` is a **manual decision by an
+  operator**; no provider is connected. It must never be presented as
+  verification.
+- It does **not** process payments. A player cannot deposit. An administrator
+  *records* credit (with a reason, audited, and above a threshold approved by a
+  second administrator); a withdrawal request holds the funds and an administrator
+  marks it paid after the operator has paid out of band. No provider credential
+  exists in the repo.
+- It does **not** use a live odds feed. Events, markets and odds come from a
+  deterministic dataset (`src/data`). Tickets are priced and settled on the server
+  from that dataset, and an administrator settles them per leg.
+- It has **no e-mail transport and no two-factor authentication**.
+- Every balance is demo credit and is labelled as such where it is displayed.
 
 ## Gates that must close before `NEXT_PUBLIC_APP_MODE=live`
 
@@ -46,7 +52,7 @@ renders this list from that constant, so the two cannot drift.
 | `tax_and_reporting_integration` | Gaming duty calculation and periodic regulatory reporting. |
 | `casino_licence_class` | Casino games are a **separate licence class** from sports betting in nearly every regime. A sports-betting permission does not extend to them, and the two must be held separately. |
 | `certified_rng_and_game_testing` | RNG and every individual game certified by an accredited laboratory (GLI-19 for RNG titles, GLI-33 for live dealer being the usual standards), with published RTP independently verified. |
-| `certified_odds_and_settlement_engine` | Pricing and settlement performed server-side by a certified engine. The client-side calculation in `src/lib/betting.ts` is display-only and must never become authoritative. |
+| `certified_odds_and_settlement_engine` | Pricing and settlement performed by a certified engine fed by a licensed data source. Today the server prices from a built-in dataset (`bettingService`, `lib/settlement.ts`) and the client calculation in `src/lib/betting.ts` is display-only. |
 | `independent_platform_audit` | Third-party audit of the platform, RNG (if any), settlement correctness and security posture. |
 
 ## Tunisian market preparation (structural, not a legal claim)
@@ -54,9 +60,9 @@ renders this list from that constant, so the two cannot drift.
 The configuration layer is already shaped for the market. None of this asserts
 that operating here is permitted.
 
-- **Currency** `TND`, with the correct **three** minor digits in the database
-  schema (`Decimal(18,3)`). Display rounds to two for readability; the ledger
-  does not.
+- **Currency** `TND`, with the correct **three** minor digits: money is stored as
+  integer **millimes** (`BigInt`, 1 TND = 1000). Display rounds to two for
+  readability; the ledger does not.
 - **Locale** default `fr`, with `ar` (RTL) and `en` alongside. Arabic is a
   first-class direction throughout, not a mirrored afterthought.
 - **Timezone** `Africa/Tunis`, applied by every date formatter so a 20:00
@@ -86,10 +92,10 @@ posture rather than only the feature set:
   requires a casino licence, a commercial agreement, per-territory whitelisting
   on the provider's side, certified RNG and credentials issued to the licensed
   entity. `src/services/gameProvider.ts` refuses rather than pretending.
-- The in-house originals are provably fair in arithmetic only. The seed is
-  generated in the browser because there is no server, so the scheme verifies
-  but guarantees nothing. Both the fairness panel and `/games/fairness` say so
-  on screen.
+- The in-house originals draw from a **server-held, committed seed** the player
+  can rotate and verify (`docs/GAMES.md` §4), and settle on the server. No
+  independent laboratory has certified the RNG or the published RTPs, which a
+  licence would require.
 - **On Tunisia specifically:** online gambling is not an open licensing market.
   Sports betting is state-operated through Promosport, land-based casinos sit
   under a separate and narrow permission, and there is no established route by
@@ -98,17 +104,23 @@ posture rather than only the feature set:
 
 ## Responsible gambling is a product surface, not a footer link
 
-The controls in `src/config/app.config.ts` → `RESPONSIBLE_GAMBLING` are wired
-into the account area and the dedicated page, not buried:
+Enforced on the server inside every wagering path (`assertWagerAllowed` in
+`src/services/responsibleService.ts`), in the same transaction that takes the
+stake — sportsbook and casino alike:
 
-- Deposit, stake, loss, single-bet and session-duration limits.
-- **A limit decrease applies immediately; an increase is delayed** by
-  `limitIncreaseCoolingOffHours`. This asymmetry is deliberate and is enforced
-  in `userService.requestLimitChange`.
-- Cooling-off periods of 1, 3, 7 or 30 days.
-- Self-exclusion of 6, 12 or 24 months, or indefinite.
-- A reality check after `realityCheckMinutes` and a hard session cap.
-- `assertNotSelfExcluded` must run server-side on every wagering and deposit
-  endpoint. A UI-only block is not a control.
+- **Deposit, stake, loss and single-bet limits** (daily / weekly / monthly), measured
+  against the ledger itself, never a stored counter.
+- **A limit decrease applies immediately; an increase waits** out
+  `responsible.limitIncreaseCoolingOffHours` (a setting, default 24 h) and is
+  recorded as pending. The asymmetry is deliberate.
+- **Cooling-off** (1, 3, 7 or 30 days) and **self-exclusion** (6, 12, 24 months).
+  A self-excluded player can still sign in, see their account and withdraw, but
+  cannot wager.
+- **Operator restrictions** (`wageringBlocked`, `withdrawalsBlocked`), suspension,
+  maintenance mode and an optional "verification required to wager" gate.
+- Administrators can see open cases (players with active exclusions, restrictions or limits)
+  (**Admin → Responsible gambling**); every change is audited.
 
-In this build these operate on demo state only, and the page says so.
+**Not implemented:** session-time limits, reality-check interrupts, affordability
+and behavioural monitoring, and the national self-exclusion register. A licensed
+deployment would be expected to add them.

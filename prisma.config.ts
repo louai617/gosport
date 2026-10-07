@@ -18,11 +18,17 @@ for (const file of [".env.local", ".env"]) {
 const url = process.env.DATABASE_URL?.trim() || "file:./dev.db";
 const engine = url.startsWith("file:") ? "sqlite" : "postgresql";
 
+// Migrations take advisory locks, which a transaction-mode pooler (Neon's
+// "-pooler" host, Supabase's :6543, PgBouncer) does not support. Point DIRECT_URL
+// at the database's direct connection and `migrate deploy` uses it, while the
+// running app keeps using the pooled DATABASE_URL.
+const migrationUrl = process.env.DIRECT_URL?.trim() || url;
+
 export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
     path: `prisma/migrations/${engine}`,
     seed: "tsx --conditions=react-server prisma/seed.ts",
   },
-  datasource: { url },
+  datasource: { url: migrationUrl },
 });

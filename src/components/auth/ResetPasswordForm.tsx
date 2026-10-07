@@ -1,8 +1,8 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useState } from "react";
 import { resetPasswordAction } from "@/app/actions/auth";
-import { emptyActionState } from "@/lib/actionState";
+import { useFormAction } from "@/lib/useFormAction";
 import { passwordStrength } from "@/lib/validation";
 import { useT } from "@/i18n/I18nProvider";
 import { Button } from "@/components/ui/Button";
@@ -12,14 +12,14 @@ import { FormMessage } from "./FormMessage";
 /** Sets a new password from a one-time link (password reset or invitation). */
 export function ResetPasswordForm({ token }: { token: string }) {
   const t = useT();
-  const [state, formAction, pending] = useActionState(resetPasswordAction, emptyActionState);
+  const { state, pending, formProps } = useFormAction(resetPasswordAction);
   const [password, setPassword] = useState("");
 
   const fieldError = (name: string) =>
     state.fieldErrors?.[name] ? t(state.fieldErrors[name]) : undefined;
 
   return (
-    <form action={formAction} className="space-y-4" noValidate>
+    <form {...formProps} className="space-y-4" noValidate>
       <FormMessage state={state} />
       <input type="hidden" name="token" value={token} />
 

@@ -15,7 +15,6 @@ export function createTranslator(dictionary: Dictionary): TranslateFn {
 
     if (template === undefined) {
       if (process.env.NODE_ENV === "development") {
-        // eslint-disable-next-line no-console
         console.warn(`[i18n] missing key: ${key}`);
       }
       return key;

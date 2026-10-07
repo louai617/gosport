@@ -18,7 +18,6 @@ import {
   SLOT_SUB_STAKE_WIN_RATE,
   evaluateGrid,
   gridFromStops,
-  spinFromFloats,
   type SlotSymbol,
   type SpinResult,
 } from "@/lib/games/slots";
@@ -26,6 +25,7 @@ import { cn } from "@/lib/cn";
 import { formatAmount } from "@/lib/format";
 import { round2 } from "@/lib/games/constants";
 import { useI18n } from "@/i18n/I18nProvider";
+import { Alert } from "@/components/ui/Alert";
 import { useWallet } from "@/components/wallet/WalletProvider";
 import type { SlotsPlayResult } from "@/types/casino";
 import { Badge } from "@/components/ui/Badge";
@@ -71,7 +71,7 @@ function winningCells(result: SpinResult | null): Set<string> {
 export function SlotsBoard() {
   const { t, locale } = useI18n();
   // Outcomes come from POST /api/casino/play; nothing here decides a result.
-  const { balance, ready, play } = useWallet();
+  const { ready, play } = useWallet();
 
   const [stake, setStake] = useState(1);
   // A fixed idle grid rather than an empty one: the machine should look like a
@@ -149,6 +149,11 @@ export function SlotsBoard() {
   return (
     <>
       <section className="rounded-xl border border-line bg-surface p-4 sm:p-5">
+        {error ? (
+          <Alert tone="danger" className="mb-4">
+            {t(error)}
+          </Alert>
+        ) : null}
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <span className="text-caption uppercase text-ink-subtle">
             {t("games.slots.lines", { count: LINE_COUNT })}

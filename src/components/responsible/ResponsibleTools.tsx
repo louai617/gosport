@@ -14,6 +14,11 @@ import { buttonStyles } from "@/components/ui/Button";
 import { BreakControls } from "./BreakControls";
 import { LimitControl, NewLimitForm } from "./LimitControl";
 
+/** Whether a break is still running. A function, so the clock is read outside render. */
+function isInForce(entry: { endsAt: string | null }): boolean {
+  return entry.endsAt === null || Date.parse(entry.endsAt) > Date.now();
+}
+
 const KINDS: LimitKind[] = ["deposit", "stake", "loss", "single_bet"];
 
 const COPY: Record<LimitKind, { titleKey: string; descriptionKey: string }> = {
@@ -50,8 +55,7 @@ export async function ResponsibleTools() {
     getSetting("responsible.limitIncreaseCoolingOffHours"),
   ]);
 
-  const now = Date.now();
-  const active = exclusions.filter((entry) => entry.endsAt === null || Date.parse(entry.endsAt) > now);
+  const active = exclusions.filter(isInForce);
 
   const byKind = (kind: LimitKind): ResponsibleGamblingLimit[] =>
     limits.filter((limit) => limit.kind === kind);

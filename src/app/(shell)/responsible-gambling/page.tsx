@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { AlertTriangle, CircleCheck, LifeBuoy, ShieldCheck } from "lucide-react";
-import { RESPONSIBLE_GAMBLING, SUPPORT, compliance } from "@/config/app.config";
+import { SUPPORT, compliance } from "@/config/app.config";
 import { getT } from "@/i18n/server";
 import { Alert } from "@/components/ui/Alert";
 import { ResponsibleTools } from "@/components/responsible/ResponsibleTools";
@@ -92,20 +92,6 @@ export default async function ResponsibleGamblingPage() {
 
         <div className="mt-4">
           <ResponsibleTools />
-        </div>
-      </section>
-
-      {/* --------------------------------------------------- reality check -- */}
-      <section aria-labelledby="reality-heading" className="mt-10">
-        <div className="rounded-xl border border-line bg-surface p-5">
-          <h2 id="reality-heading" className="text-h3 text-ink">
-            {t("responsible.realityCheck.title")}
-          </h2>
-          <p className="mt-1.5 max-w-prose text-small leading-relaxed text-ink-muted">
-            {t("responsible.realityCheck.body", {
-              minutes: RESPONSIBLE_GAMBLING.realityCheckMinutes,
-            })}
-          </p>
         </div>
       </section>
 

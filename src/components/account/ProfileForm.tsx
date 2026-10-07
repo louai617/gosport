@@ -1,8 +1,8 @@
 "use client";
 
-import { useActionState } from "react";
+
 import { updateProfileAction } from "@/app/actions/account";
-import { emptyActionState } from "@/lib/actionState";
+import { useFormAction } from "@/lib/useFormAction";
 import { useT } from "@/i18n/I18nProvider";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
@@ -16,13 +16,13 @@ export interface ProfileFormProps {
 /** The two fields a player may change themselves; everything else is an operator decision. */
 export function ProfileForm({ displayName, phone }: ProfileFormProps) {
   const t = useT();
-  const [state, formAction, pending] = useActionState(updateProfileAction, emptyActionState);
+  const { state, pending, formProps } = useFormAction(updateProfileAction);
 
   const fieldError = (name: string) =>
     state.fieldErrors?.[name] ? t(state.fieldErrors[name]) : undefined;
 
   return (
-    <form action={formAction} className="space-y-4 rounded-xl border border-line bg-surface p-4" noValidate>
+    <form {...formProps} className="space-y-4 rounded-xl border border-line bg-surface p-4" noValidate>
       {state.messageKey && !state.fieldErrors ? (
         <Alert tone={state.ok ? "success" : "danger"}>{t(state.messageKey)}</Alert>
       ) : null}

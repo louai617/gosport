@@ -1,8 +1,8 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useState } from "react";
 import { changePasswordAction } from "@/app/actions/auth";
-import { emptyActionState } from "@/lib/actionState";
+import { useFormAction } from "@/lib/useFormAction";
 import { passwordStrength } from "@/lib/validation";
 import { useT } from "@/i18n/I18nProvider";
 import { Alert } from "@/components/ui/Alert";
@@ -11,14 +11,14 @@ import { PasswordInput } from "@/components/ui/PasswordInput";
 
 export function ChangePasswordForm() {
   const t = useT();
-  const [state, formAction, pending] = useActionState(changePasswordAction, emptyActionState);
+  const { state, pending, formProps } = useFormAction(changePasswordAction);
   const [next, setNext] = useState("");
 
   const fieldError = (name: string) =>
     state.fieldErrors?.[name] ? t(state.fieldErrors[name]) : undefined;
 
   return (
-    <form action={formAction} className="mt-4 max-w-md space-y-4" noValidate>
+    <form {...formProps} className="mt-4 max-w-md space-y-4" noValidate>
       {state.messageKey && !state.fieldErrors ? (
         <Alert tone={state.ok ? "success" : "danger"}>{t(state.messageKey)}</Alert>
       ) : null}

@@ -1,10 +1,10 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { JURISDICTION } from "@/config/app.config";
 import { registerAction } from "@/app/actions/auth";
-import { emptyActionState } from "@/lib/actionState";
+import { useFormAction } from "@/lib/useFormAction";
 import { passwordStrength } from "@/lib/validation";
 import { useT } from "@/i18n/I18nProvider";
 import { Button } from "@/components/ui/Button";
@@ -27,14 +27,14 @@ const COUNTRY_OPTIONS = ["TN", "DZ", "MA", "FR", "IT", "DE"] as const;
  */
 export function RegisterForm() {
   const t = useT();
-  const [state, formAction, pending] = useActionState(registerAction, emptyActionState);
+  const { state, pending, formProps } = useFormAction(registerAction);
   const [password, setPassword] = useState("");
 
   const fieldError = (name: string) =>
     state.fieldErrors?.[name] ? t(state.fieldErrors[name]) : undefined;
 
   return (
-    <form action={formAction} className="space-y-4" noValidate>
+    <form {...formProps} className="space-y-4" noValidate>
       <FormMessage state={state} />
 
       <div className="grid gap-4 sm:grid-cols-2">

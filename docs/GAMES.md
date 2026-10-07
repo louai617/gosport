@@ -1,8 +1,9 @@
 # SportGo — casino games
 
-> Everything in this section is simulated. Balances are session numbers in the
-> browser, rounds are computed client-side, and no wager, credit or provider
-> call is real. Read `docs/COMPLIANCE.md` alongside this.
+> Credits only. Rounds are decided, charged and settled **on the server**, from a
+> seed the player can audit, and recorded in the same ledger as every other
+> movement — but the balance is demo credit and no game provider is connected.
+> Read `docs/COMPLIANCE.md` alongside this.
 
 ---
 
@@ -11,7 +12,7 @@
 | | Originals | Provider content |
 |---|---|---|
 | Where the maths lives | `src/lib/games/` in this repo | The studio's server |
-| Playable here | Yes — Crash, Dice, Mines, Plinko, Limbo | **No.** Every title is `unavailable` |
+| Playable here | Yes — Crash, Dice, Mines, Plinko, Limbo, Slots, Blackjack, Roulette | **No.** Every title is `unavailable` |
 | Provably fair | Yes, `src/lib/provablyFair.ts` | Provider-defined; usually not |
 | RTP | Computed and published per game | Provider-defined; the operator does not set it |
 | Integration | Native route | `GameProviderAdapter` — nothing connected |
@@ -104,36 +105,45 @@ cannot authenticate its caller is a free-money endpoint.
 
 ## 4. Provably fair
 
-`src/lib/provablyFair.ts` implements the standard commit–reveal scheme:
+`src/server/casino/fairness.ts` holds a **per-player seed pair on the server** and
+implements the standard commit–reveal scheme:
 
 ```
-serverSeed        32 random bytes, secret
-serverSeedHash    SHA-256(serverSeed) — published before any bet
-clientSeed        player-supplied, editable at any time
-nonce             increments per round
+serverSeed        32 random bytes, secret, stored in FairnessSeed
+serverSeedHash    SHA-256(serverSeed) — shown to the player BEFORE any bet
+clientSeed        player-editable
+nonce             one atomic increment per round on the pair
 
 bytes  = HMAC-SHA256(key = serverSeed, msg = `${clientSeed}:${nonce}:${cursor}`)
 float  = b0/256 + b1/256² + b2/256³ + b3/256⁴
 ```
 
-Four bytes per float, not one: a single byte gives 256 distinct outcomes and
-bands visibly on a multiplier curve. A digest yields eight floats; games needing
-more advance `cursor`, so the stream is unbounded and still traces to one seed.
-Mines shuffles all 25 tiles with Fisher–Yates over the same stream rather than
-drawing positions independently, which would collide and need rejection —
-breaking the fixed float budget a verifier depends on.
+The server therefore cannot choose an outcome after seeing a bet, and cannot swap
+the seed afterwards. When the player **rotates** the pair, the old server seed is
+*revealed*: anyone can check that its hash equals the commitment they were shown
+and that each past round reproduces from `(serverSeed, clientSeed, nonce)`.
 
-`/games/fairness` re-derives any round from pasted seeds, using the same
-functions the games use and no privileged access at all.
+Safeguards that matter:
 
-> **What this build does not prove.** The arithmetic is the real scheme and
-> verifies correctly. The *guarantee* is absent: with no server, the seed is
-> generated in the player's own browser, so nothing was committed to by a party
-> that could not also change it. Provably fair means something only when the
-> server generates the seed, publishes the hash before the bet, and computes
-> the outcome server-side. The fairness panel and the verifier page both say so
-> on screen — a fairness badge without that caveat is the exact
-> misrepresentation the badge exists to prevent.
+- The nonce is bumped by a single atomic `UPDATE … increment`, so two concurrent
+  rounds can never share a nonce (which would give them identical outcomes). It
+  is taken inside the transaction that opens the round, so a round that fails to
+  open burns no nonce.
+- A pair **cannot be rotated while a round that drew from it is open** — revealing
+  the seed mid-round would reveal the Mines board, the crash point or the rest of
+  the shoe.
+- Four bytes per float, not one: a single byte bands visibly on a multiplier
+  curve. A digest yields eight floats; games needing more advance `cursor`.
+  Mines and the blackjack shoe shuffle with Fisher–Yates over the same stream
+  (`src/lib/games/shuffle.ts`), so the float budget is fixed and a verifier can
+  replay it.
+- Every settled round stores its proof (`serverSeedHash`, `clientSeed`, `nonce`)
+  on the `Bet` row.
+
+`/games/fairness` and the per-game **Fairness** panel show the commitment, let the
+player edit the client seed and rotate, list revealed seeds, and re-derive any
+round in the browser with `src/lib/provablyFair.ts` — the same byte-to-float
+mapping as the server (`scripts/fairness-test.mts` asserts the two agree).
 
 ## 5. Game mathematics
 
@@ -154,7 +164,10 @@ statement — and the kind that survives review precisely because nobody
 re-derives it.
 
 Crash's rising curve is `e^{0.18·t}`: the bust point is drawn once, up front,
-from the committed seed. The animation is presentation and cannot move it.
+from the committed seed and kept only on the server. A cash-out is resolved
+against the **server's clock**, not a multiplier the browser reports, so the
+animation is presentation and cannot move the result. A round the player walks
+away from is settled as a loss the next time it is touched.
 
 ## 5a. SportGo Reels — the slot
 
@@ -201,90 +214,84 @@ losses is not being straight with the player.
 
 ## 5b. Server-side settlement
 
-Four games — **slots, blackjack, roulette, plinko** — no longer decide anything
-in the browser. The client sends a wager and animates what comes back.
+All eight games — dice, limbo, crash, mines, plinko, slots, blackjack, roulette —
+settle on the server. The client sends a wager and animates what comes back.
 
 ```
-POST /api/casino/play      wager -> outcome + new balance
-POST /api/casino/action    blackjack hit / stand / double / split
-GET  /api/casino/session   opens the ledger, returns balance + CSRF token
-GET  /api/casino/history   settled rounds for this session
+POST /api/casino/play      open a round (one-shot games settle immediately)
+POST /api/casino/action    continue a round: mines reveal/cash-out, crash cash-out, blackjack hit/stand/double/split
+GET  /api/casino/active    the caller's open round for a game (resume after a reload)
+GET  /api/casino/history   the caller's settled rounds
+GET  /api/casino/fairness  commitment, client seed, revealed seeds (POST rotates the pair, optionally with a new client seed)
 ```
 
-**Where the authority sits.** `src/server/casino/` owns the balance check, the
-randomness (`crypto.randomBytes`, not `Math.random()`), the payout and the
-ledger write. The game *maths* is reused from `src/lib/games/*`, which is pure
-— the client imports the same modules only to render a result the server has
-already committed to.
+**Where the authority sits.** `src/server/casino/` owns the wager checks, the
+randomness, the payout and the ledger writes. The game *maths* is in the pure
+modules under `src/lib/games/`, which the browser also imports — only to render a
+result the server has already committed to and to quote odds.
 
-**Idempotency.** Every write carries a client-generated key. A retry returns
-the original response rather than rolling again, so a timeout cannot be used to
-re-roll a losing spin. Settlement additionally refuses a round that is not
-`OPEN`, which is what stops a finished blackjack hand being replayed for a
-second payout.
+**One transaction per step.** Opening a round runs `assertWagerAllowed`
+(maintenance mode, restrictions, self-exclusion, verification gate, stake / loss /
+single-bet limits), takes the stake through `appendLedgerEntry`, draws the seed
+nonce and writes the `Bet(kind CASINO)` row — together or not at all. Settlement
+credits the payout the same way. Each round is a `Bet` with a `version` column
+for optimistic locking, so two concurrent actions on one round cannot both win.
 
-**What the client is not sent.** The blackjack shoe never crosses the wire, and
-the hole card is withheld until the dealer's turn — with either, the game is
-solvable.
+**Idempotency.** Every write carries a client-generated key stored in
+`IdempotencyRecord` *inside the same transaction*. A retry — or a concurrent
+duplicate — returns the original response and moves no money, so a timeout cannot
+be used to re-roll a losing spin.
 
-**Free spins are server state.** The slot's free-spin counter and the stake it
-was won at live in the ledger. A client-held counter could be edited for
-unlimited doubled spins, and the published 96.74% RTP counts free spins as
-23.51 of its points — so getting this wrong would make the stated figure false.
+**What the client is never sent.** The blackjack shoe and the dealer's hole card,
+the Mines layout and the crash point stay on the server until the round is
+settled; with any of them the game is solvable.
 
-**Storage is the demo-grade part.** The ledger is a process-local `Map`. That
-is the one thing a real deployment must replace, and the seam is narrow: every
-function in `store.ts` maps to one Prisma call against the `Wallet`,
-`Transaction` and `Bet` models that already exist. Balances reset on restart
-and are not shared across instances. What it does *not* mean is that the client
-is trusted — the balance, the RNG and the settlement are all server-side, which
-is the property that matters.
+**Free spins are server state** (`SlotFreeSpins`): a client-held counter could be
+edited for unlimited doubled spins, and the published 96.74% RTP counts free spins
+as 23.51 of its points.
 
-`npm run casino:test` exercises the ledger end to end: balance reconciliation
-over twelve spins, retry-does-not-pay-twice, over-stake and negative-stake
-refusal, roulette payouts against the paytable, and a settled hand refusing
-further action.
+**Stakes** are bounded by `GAME_STAKE` and must be whole centimes; the server
+re-validates them regardless of what the form offered.
+
+`npm run test:integration` covers the casino end to end: input validation,
+settlement against the pure maths and the player's revealed seed, balance
+reconciliation after every game, idempotent replay and a six-way race on one key,
+double cash-out refusal, crash settled on the server clock and abandoned rounds,
+limit and cooling-off enforcement, concurrent bets that cannot overspend, and "no
+round left open or half-written". `scripts/fairness-test.mts` pins the
+server/browser float derivation.
 
 ## 6. Responsible gambling
 
-Casino games are not sports betting with different artwork, and the product
-should not treat them as if they were.
-
-A football bet resolves in ninety minutes. A dice roll resolves in under a
-second. The same stake, the same edge and the same player produce losses orders
-of magnitude faster, and the loss-chase loop is far tighter — which is why
-regulators commonly impose stake caps, minimum spin durations and mandatory
-session reminders on casino content that they do not impose on sportsbooks.
+Casino games are not sports betting with different artwork. A football bet
+resolves in ninety minutes; a dice roll in under a second. The same stake and edge
+produce losses orders of magnitude faster, which is why regulators commonly
+impose stake caps, minimum round durations and session reminders on casino
+content that they do not impose on sportsbooks.
 
 What this build does:
 
-- The lobby states the speed difference in the first disclosure a player reads.
-- Every board carries the simulation notice **above** the stake field.
-- The existing limit, cooling-off and self-exclusion controls cover games as
-  well as sport, because they are account-level and always were.
+- The account-level controls apply to games exactly as to sport, and they are
+  **enforced on the server inside every round** (`assertWagerAllowed`): deposit,
+  stake, loss and single-bet limits (increases wait out a cooling-off period),
+  cooling-off and self-exclusion, and operator restrictions.
+- Every game page states plainly that credits are not money, and the lobby says
+  how much faster casino play is.
+- Stakes are bounded per round.
 
-What a licensed deployment must add:
-
-- Per-spin stake caps and a minimum round duration, where the regulator sets one.
-- Loss and session limits **enforced server-side on the game endpoint** — a
-  limit the UI merely displays is not a limit.
-- `assertNotSelfExcluded` on the launch and settlement path, not only on the
-  sportsbook's.
-- Reality-check interrupts that survive a page reload.
-- Affordability and behavioural monitoring, at whatever threshold applies.
+What a licensed deployment must still add: minimum round duration where the
+regulator sets one, session-time limits and reality checks that survive a reload,
+and affordability and behavioural monitoring at whatever threshold applies.
 
 ## 7. Before any of this could be real
 
 Beyond `compliance.requiredBeforeLaunch`, which now carries
 `casino_licence_class` and `certified_rng_and_game_testing`:
 
-- Server-side game engine. `gamesService.placeRound()` deliberately refuses:
-  trusting a browser-reported outcome is the most exploitable thing a casino
-  backend can do, and a stub that "just records it for now" is how that reaches
-  production.
-- Server-held seeds with per-player rotation history.
-- Game rounds in the same append-only ledger as bets and transactions.
-- Independent RTP verification against the published figures.
+- Independent RTP and RNG certification against the published figures (the
+  engine, seed handling and ledger exist; no laboratory has examined them).
+- A licensed game provider, if third-party content is wanted (see §2–3).
+- Real money rails — today credit is recorded by an operator.
 
 ### On Tunisia specifically
 

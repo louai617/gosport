@@ -82,10 +82,6 @@ export const RESPONSIBLE_GAMBLING = {
   limitIncreaseCoolingOffHours: 24,
   coolingOffOptionsDays: [1, 3, 7, 30] as const,
   selfExclusionOptionsMonths: [6, 12, 24] as const,
-  /** After this long in one session the user is shown a reality check. */
-  realityCheckMinutes: 60,
-  /** Session is ended after this long regardless. */
-  maxSessionMinutes: 240,
   supportUrl: "/responsible-gambling",
 } as const;
 

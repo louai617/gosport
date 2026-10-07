@@ -18,7 +18,6 @@ import {
   FREE_SPIN_MULTIPLIER,
   REELS,
   evaluateGrid,
-  gridFromStops,
   type SlotSymbol,
 } from "../src/lib/games/slots.ts";
 

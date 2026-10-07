@@ -12,7 +12,6 @@ import {
   listPlayerTransactions,
   type TransactionQueryInput,
 } from "@/server/repositories/transactionRepository";
-import { describeEntry } from "@/server/wallet/descriptions";
 import { appendLedgerEntry, ensureWallet, LedgerError } from "@/server/wallet/ledger";
 import { getSetting } from "@/server/settings/settingsService";
 import type {

@@ -36,7 +36,7 @@ export function PlayersTable({ data, params, canCreate }: PlayersTableProps) {
       header: t("admin.column.player"),
       sortable: true,
       render: (row) => (
-        <Link href={`/admin/players/${row.id}`} className="block min-w-0 hover:underline">
+        <Link href={`/admin/players/${row.id}`} className="block min-w-0 max-w-64 hover:underline">
           <span className="block truncate font-medium text-ink">{row.username}</span>
           <span className="block truncate text-caption normal-case tracking-normal text-ink-subtle">
             {row.displayName} · {row.email}
@@ -92,16 +92,6 @@ export function PlayersTable({ data, params, canCreate }: PlayersTableProps) {
       sortable: true,
       secondary: true,
       render: (row) => (row.lastLoginAt ? formatDateTime(row.lastLoginAt, locale) : "—"),
-    },
-    {
-      key: "actions",
-      header: "",
-      align: "end",
-      render: (row) => (
-        <Link href={`/admin/players/${row.id}`} className={buttonStyles({ variant: "ghost", size: "sm" })}>
-          {t("admin.players.view")}
-        </Link>
-      ),
     },
   ];
 

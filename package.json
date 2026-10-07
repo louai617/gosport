@@ -21,7 +21,6 @@
     "admin:recovery-link": "tsx --conditions=react-server scripts/admin-recovery-link.ts",
     "verify": "npm run typecheck && npm run check:boundary && npm run audit:i18n && npm run test:unit && npm run build",
     "audit:i18n": "node scripts/audit-i18n.mjs",
-    "smoke": "bash scripts/smoke.sh",
     "check:boundary": "node scripts/check-client-boundary.mjs",
     "slot:rtp": "node --experimental-strip-types scripts/slot-rtp.ts",
     "test:unit": "tsx scripts/settlement-test.ts && tsx scripts/period-test.ts && tsx scripts/csv-test.ts && tsx --conditions=react-server scripts/fairness-test.mts",
@@ -55,5 +54,8 @@
     "tailwindcss": "4.3.3",
     "tsx": "^4.23.15",
     "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

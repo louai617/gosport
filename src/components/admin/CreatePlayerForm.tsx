@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useState } from "react";
+import { useState } from "react";
 import { createPlayerAction } from "@/app/actions/admin";
-import { emptyActionState } from "@/lib/actionState";
+import { useFormAction } from "@/lib/useFormAction";
 import { JURISDICTION } from "@/config/app.config";
 import { LOCALE_META } from "@/i18n/config";
 import { useT } from "@/i18n/I18nProvider";
@@ -26,7 +26,7 @@ function generatePassword(): string {
 
 export function CreatePlayerForm() {
   const t = useT();
-  const [state, formAction, pending] = useActionState(createPlayerAction, emptyActionState);
+  const { state, pending, formProps } = useFormAction(createPlayerAction);
   const [mode, setMode] = useState<"invitation" | "password">("invitation");
   const [password, setPassword] = useState("");
 
@@ -69,7 +69,7 @@ export function CreatePlayerForm() {
   }
 
   return (
-    <form action={formAction} className="space-y-5 rounded-xl border border-line bg-surface p-5" noValidate>
+    <form {...formProps} className="space-y-5 rounded-xl border border-line bg-surface p-5" noValidate>
       {state.messageKey && !state.ok ? <Alert tone="danger">{t(state.messageKey)}</Alert> : null}
 
       <div className="grid gap-4 sm:grid-cols-2">

@@ -1,8 +1,8 @@
 "use client";
 
-import { useActionState, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import type { ActionState } from "@/lib/actionState";
-import { emptyActionState } from "@/lib/actionState";
+import { useFormAction } from "@/lib/useFormAction";
 import { useT } from "@/i18n/I18nProvider";
 import { Alert } from "@/components/ui/Alert";
 import { Button, type ButtonProps } from "@/components/ui/Button";
@@ -37,12 +37,19 @@ export function ActionForm({
   children,
 }: ActionFormProps) {
   const t = useT();
-  const [state, formAction, pending] = useActionState(action, emptyActionState);
+  const { state, pending, formProps } = useFormAction(action);
+  const form = useRef<HTMLFormElement>(null);
+
+  // A form that succeeded starts clean for the next entry; one that failed keeps
+  // exactly what was typed.
+  useEffect(() => {
+    if (state.ok) form.current?.reset();
+  }, [state]);
 
   const error = (name: string) => (state.fieldErrors?.[name] ? t(state.fieldErrors[name]) : undefined);
 
   return (
-    <form action={formAction} className={className ?? "space-y-3"} noValidate>
+    <form ref={form} {...formProps} className={className ?? "space-y-3"} noValidate>
       {state.messageKey ? (
         <Alert tone={state.ok ? "success" : "danger"}>
           {t(state.messageKey)}

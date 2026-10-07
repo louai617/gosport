@@ -1,5 +1,6 @@
 "use client";
 
+import { createElement } from "react";
 import * as Icons from "lucide-react";
 import type { PaymentMethod } from "@/types";
 import { cn } from "@/lib/cn";
@@ -70,7 +71,7 @@ export function PaymentMethodCard({
             : "border-line-soft bg-surface-2 text-ink-subtle",
         )}
       >
-        <Icon size={18} />
+        {createElement(Icon, { size: 18 })}
       </span>
 
       <span className="min-w-0 flex-1">

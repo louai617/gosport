@@ -80,7 +80,7 @@ async function fanOut(recipientIds: string[], input: NotificationInput): Promise
   const active = channels.filter((channel) => channel.isConfigured());
   if (active.length === 0) return;
 
-  const recipients = await prisma.user.findMany({
+  const recipients = await db.user.findMany({
     where: { id: { in: recipientIds } },
     select: { id: true, email: true, phone: true, profile: { select: { locale: true } } },
   });

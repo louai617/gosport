@@ -1,9 +1,9 @@
 "use client";
 
-import { useActionState } from "react";
+
 import Link from "next/link";
 import { loginAction } from "@/app/actions/auth";
-import { emptyActionState } from "@/lib/actionState";
+import { useFormAction } from "@/lib/useFormAction";
 import { useT } from "@/i18n/I18nProvider";
 import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Checkbox";
@@ -18,10 +18,10 @@ export interface LoginFormProps {
 
 export function LoginForm({ next }: LoginFormProps) {
   const t = useT();
-  const [state, formAction, pending] = useActionState(loginAction, emptyActionState);
+  const { state, pending, formProps } = useFormAction(loginAction);
 
   return (
-    <form action={formAction} className="space-y-4" noValidate>
+    <form {...formProps} className="space-y-4" noValidate>
       <FormMessage state={state} />
       {next ? <input type="hidden" name="next" value={next} /> : null}
 

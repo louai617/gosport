@@ -643,6 +643,14 @@ section("Casino: server-authoritative rounds");
     return balance;
   };
 
+  // --- cold settings cache -------------------------------------------------------------
+  // The wager check reads settings inside the round's transaction. On SQLite that
+  // transaction owns the only connection, so a read through the global client
+  // deadlocks (P2028) — but only when the 5 s settings cache is cold.
+  await new Promise((resolve) => setTimeout(resolve, 5_500));
+  const cold = await play({ game: "dice", stake: 1, target: 50, direction: "under" });
+  check("a round opens when the settings cache is cold", cold.status === 200, `status ${cold.status}`);
+
   // --- validation: the browser's own bounds are a courtesy ------------------------------
   for (const [name, body] of [
     ["a stake above the table maximum", { game: "dice", stake: 5000, target: 50, direction: "under" }],
@@ -696,7 +704,18 @@ section("Casino: server-authoritative rounds");
   const first = await c.post("/api/casino/play", { game: "dice", stake: 1, target: 50, direction: "under", idempotencyKey: replayKey });
   const balanceAfterFirst = (await ledgerSum(cid)).balance;
   const second = await c.post("/api/casino/play", { game: "dice", stake: 1, target: 50, direction: "under", idempotencyKey: replayKey });
-  check("a retried request returns the original outcome", second.status === 200 && second.data.roundId === first.data.roundId && JSON.stringify(second.data.result) === JSON.stringify(first.data.result));
+  // jsonb does not preserve key order, so compare structure, not serialisation.
+  const canon = (value: unknown): string =>
+    JSON.stringify(value, (_k, v) =>
+      v && typeof v === "object" && !Array.isArray(v)
+        ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b)))
+        : v,
+    );
+  check(
+    "a retried request returns the original outcome",
+    second.status === 200 && second.data.roundId === first.data.roundId && canon(second.data.result) === canon(first.data.result),
+    `first=${first.status} second=${second.status} same round=${second.data?.roundId === first.data?.roundId}`,
+  );
   check("…and moves no money", (await ledgerSum(cid)).balance === balanceAfterFirst);
   const raceKey = key();
   const race = await Promise.all(Array.from({ length: 6 }, () => c.post("/api/casino/play", { game: "dice", stake: 1, target: 50, direction: "under", idempotencyKey: raceKey })));
@@ -819,6 +838,59 @@ section("Casino: server-authoritative rounds");
   check("…and the ledger still equals the balance", finalState.sum === finalState.balance, `sum=${finalState.sum} balance=${finalState.balance}`);
   const unpaid = await prisma.bet.count({ where: { userId: poorId, status: "OPEN" } });
   check("no round is left open or half-written", unpaid === 0);
+}
+
+
+section("Pages render, and are protected");
+{
+  const html = async (client: Client, path: string) => {
+    const response = await fetch(`${BASE}${path}`, { redirect: "manual", headers: { cookie: [...client.jar].map(([k, v]) => `${k}=${v}`).join("; "), "x-forwarded-for": client.ip } });
+    return { status: response.status, location: response.headers.get("location") ?? "", body: await response.text(), headers: response.headers };
+  };
+  const broken = (r: { body: string }) => r.body.includes('data-error-boundary="route"');
+
+  const guest = new Client();
+  const publicRoutes = ["/", "/sports", "/sports/football", "/live", "/results", "/popular", "/games", "/games/reels", "/games/roulette", "/games/blackjack", "/games/crash", "/games/dice", "/games/mines", "/games/plinko", "/games/limbo", "/games/fairness", "/promotions", "/responsible-gambling", "/about", "/help", "/contact", "/legal/terms", "/legal/privacy", "/legal/cookies", "/login", "/register", "/forgot-password", "/reset-password?token=nope"];
+  let bad: string[] = [];
+  for (const route of publicRoutes) {
+    const r = await html(guest, route);
+    if (r.status !== 200 || broken(r)) bad.push(`${route} → ${r.status}`);
+  }
+  check(`${publicRoutes.length} public pages render for a guest`, bad.length === 0, bad.join("; "));
+  const head = await html(guest, "/");
+  check("responses carry a nonce-based CSP and a request id", /nonce-/.test(head.headers.get("content-security-policy") ?? "") && !!head.headers.get("x-request-id"));
+
+  const protectedPaths = ["/account", "/account/bets", "/account/transactions", "/account/profile", "/account/security", "/account/responsible", "/account/notifications", "/wallet", "/wallet/withdraw", "/wallet/deposit", "/admin", "/admin/players", "/admin/transactions", "/admin/audit", "/admin/settings"];
+  bad = [];
+  for (const route of protectedPaths) {
+    const r = await html(guest, route);
+    if (r.status !== 307 || !r.location.startsWith("/login")) bad.push(`${route} → ${r.status}`);
+  }
+  check("account and admin pages redirect a guest to sign in", bad.length === 0, bad.join("; "));
+
+  const playerPages = ["/account", "/account/bets", "/account/transactions", "/account/profile", "/account/security", "/account/responsible", "/account/notifications", "/wallet", "/wallet/withdraw", "/wallet/deposit", "/games/blackjack", "/responsible-gambling"];
+  bad = [];
+  for (const route of playerPages) {
+    const r = await html(playerA, route);
+    if (r.status !== 200 || broken(r)) bad.push(`${route} → ${r.status}`);
+  }
+  check(`${playerPages.length} player pages render for a signed-in player`, bad.length === 0, bad.join("; "));
+
+  const adminPages = ["/admin", "/admin?period=today", "/admin?period=lastMonth", "/admin?period=custom&from=2026-01-01&to=2026-01-31", "/admin/players", "/admin/players?status=active&search=pa", "/admin/players/new", `/admin/players/${idA}`, `/admin/players/${idA}?tab=wallet`, `/admin/players/${idA}?tab=transactions`, `/admin/players/${idA}?tab=bets`, `/admin/players/${idA}?tab=activity`, `/admin/players/${idA}?tab=responsible`, "/admin/transactions", "/admin/transactions?kind=deposit&minAmount=1", "/admin/wallet", "/admin/bets", "/admin/bets?kind=sports&status=pending", "/admin/reports", "/admin/audit", "/admin/audit?severity=critical", "/admin/notifications", "/admin/settings", "/admin/security", "/admin/responsible-gambling"];
+  bad = [];
+  for (const route of adminPages) {
+    const r = await html(admin, route);
+    if (r.status !== 200 || broken(r)) bad.push(`${route} → ${r.status}`);
+  }
+  check(`${adminPages.length} admin pages render for an administrator`, bad.length === 0, bad.join("; "));
+
+  const asPlayer = await html(playerA, "/admin");
+  const asPlayer2 = await html(playerA, "/admin/players");
+  check("a signed-in player gets a 404 for the admin console", asPlayer.status === 404 && asPlayer2.status === 404, `${asPlayer.status} ${asPlayer2.status}`);
+  const missing = await html(guest, "/this-route-does-not-exist");
+  check("unknown routes are 404", missing.status === 404);
+  const dashboard = await html(admin, "/admin");
+  check("the dashboard shows real numbers, not placeholders", !dashboard.body.includes("Synthetic") && /Dépôts|Deposits/.test(dashboard.body));
 }
 
 section("Audit trail and reports");

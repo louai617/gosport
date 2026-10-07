@@ -119,7 +119,9 @@ export function useBodyScrollLock(active: boolean): void {
 
 export function useEscapeKey(active: boolean, onEscape: () => void): void {
   const handler = useRef(onEscape);
-  handler.current = onEscape;
+  useEffect(() => {
+    handler.current = onEscape;
+  });
 
   useEffect(() => {
     if (!active) return;

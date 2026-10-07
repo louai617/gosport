@@ -1,9 +1,9 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { PaymentMethod } from "@/types";
 import { withdrawAction } from "@/app/actions/wallet";
-import { emptyActionState } from "@/lib/actionState";
+import { useFormAction } from "@/lib/useFormAction";
 import { JURISDICTION } from "@/config/app.config";
 import { useT } from "@/i18n/I18nProvider";
 import { Alert } from "@/components/ui/Alert";
@@ -21,7 +21,11 @@ import { PaymentMethodCard } from "./PaymentMethodCard";
  */
 export function WithdrawForm({ methods }: { methods: PaymentMethod[] }) {
   const t = useT();
-  const [state, formAction, pending] = useActionState(withdrawAction, emptyActionState);
+  const { state, pending, formProps } = useFormAction(withdrawAction);
+  const form = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (state.ok) form.current?.reset();
+  }, [state]);
   const [methodId, setMethodId] = useState<string>(methods[0]?.id ?? "");
   // Fresh per mount, and re-minted after a success so the next request is new.
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
@@ -36,7 +40,7 @@ export function WithdrawForm({ methods }: { methods: PaymentMethod[] }) {
     state.fieldErrors?.[name] ? t(state.fieldErrors[name]) : undefined;
 
   return (
-    <form action={formAction} className="space-y-5" noValidate>
+    <form ref={form} {...formProps} className="space-y-5" noValidate>
       <Alert tone="info">{t("wallet.withdraw.operatorNote")}</Alert>
 
       <input type="hidden" name="idempotencyKey" value={idempotencyKey} />

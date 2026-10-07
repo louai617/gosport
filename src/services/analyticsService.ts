@@ -170,8 +170,6 @@ export async function getDashboard(query: Partial<PeriodQuery> = {}): Promise<Da
   ]);
 
   const uniqueBy = (type: TransactionType) => pairs.filter((pair) => pair.type === type).length;
-  const uniqueOf = (...types: TransactionType[]) =>
-    new Set(pairs.filter((pair) => types.includes(pair.type)).map((pair) => pair.userId)).size;
 
   const deposits = toFlow(byType, uniqueBy("DEPOSIT"), "DEPOSIT");
   const withdrawals = toFlow(byType, uniqueBy("WITHDRAWAL"), "WITHDRAWAL");

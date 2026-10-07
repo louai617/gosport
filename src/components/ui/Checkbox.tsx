@@ -39,10 +39,12 @@ export function Checkbox({
           {...props}
         />
 
-        <span
+        {/* A <label> (not a span) so that clicking the box itself toggles the input. */}
+        <label
+          htmlFor={inputId}
           aria-hidden="true"
           className={cn(
-            "mt-0.5 grid size-[18px] shrink-0 place-items-center rounded-xs border",
+            "mt-0.5 grid size-[18px] shrink-0 cursor-pointer place-items-center rounded-xs border",
             "transition-colors duration-fast",
             "border-line-strong bg-surface-2",
             "peer-checked:border-primary peer-checked:bg-primary peer-checked:text-ink-inverse",
@@ -53,7 +55,7 @@ export function Checkbox({
           )}
         >
           <Check className="size-3 opacity-0 transition-opacity duration-fast" strokeWidth={3} />
-        </span>
+        </label>
 
         <label
           htmlFor={inputId}

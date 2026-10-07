@@ -22,6 +22,17 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // Native / driver packages are loaded by Node at runtime, not bundled. The
+  // Prisma driver adapters are required lazily (src/server/db.ts) so a
+  // PostgreSQL deployment never loads the libsql binding and vice versa.
+  serverExternalPackages: [
+    "@prisma/client",
+    "@prisma/adapter-libsql",
+    "@prisma/adapter-pg",
+    "@libsql/client",
+    "pg",
+    "@node-rs/argon2",
+  ],
   images: {
     formats: ["image/avif", "image/webp"],
   },

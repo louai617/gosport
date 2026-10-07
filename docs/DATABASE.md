@@ -1,217 +1,147 @@
 # SportGo — database
 
-`prisma/schema.prisma` is the **deployment target, not the running data source**.
-Every screen in this build is served by the simulated provider in `src/data`
-through `src/services/**`. No query is issued, no connection is opened, and the
-app runs with no database present. `src/server/db.ts` exists so that the seam is
-already in the right place; it constructs the client on first use, never at
-import.
+One Prisma schema, two engines:
 
----
+| Environment | `DATABASE_URL` | Engine | Driver |
+|---|---|---|---|
+| Local development | `file:./dev.db` | SQLite (file in the project root, git-ignored) | `@prisma/adapter-libsql` |
+| Production (Vercel) | `postgresql://…` | PostgreSQL | `@prisma/adapter-pg` (`pg`) |
 
-## Entity overview
+Prisma fixes the `provider` at generate time, so `scripts/prisma-provider.mjs`
+rewrites the single `provider = "…"` line in `prisma/schema.prisma` from the
+scheme of `DATABASE_URL`. It runs automatically from `postinstall`, `build`,
+`build:vercel` and every `db:*` script. Nothing else in the schema is
+engine-specific — there are no `@db.*` native types — which is what lets one file
+serve both.
 
-The core betting path — identity, catalogue, wager, ledger:
+The driver adapters are `require`d lazily in `src/server/db.ts`, so a Postgres
+deployment never loads the libsql binding and vice versa. **SQLite is refused on
+Vercel** (read-only, ephemeral filesystem would silently lose every account).
+
+## Design decisions
+
+- **Money is `BigInt` millimes** (1 TND = 1000). Not `Float` (drifts), not
+  `Decimal` (does not exist on SQLite). An integer column behaves identically on
+  both engines and sums exactly. The application works in integer millimes and
+  converts to TND only at the UI edge (`src/lib/money.ts`).
+- **Identifiers are application-generated cuids**, so a row can be referenced
+  (a log line, an idempotency key) before it is inserted.
+- **Roles are a column**, not a join table; the permission map is in code
+  (`src/server/auth/permissions.ts`).
+- **Ledger rows are never edited.** A correction is a new row referencing the
+  original (`relatedId`).
+- **Integrity lives in the database too.** Hand-written `integrity_guards`
+  migrations add constraints and triggers that application code cannot bypass
+  (below).
+
+## Models
+
+| Model | Purpose |
+|---|---|
+| `User` | Identity and account state: username, e-mail, Argon2id hash, `role`, `status`, `mustChangePassword`, `failedLoginCount`, `lockedUntil`. |
+| `PlayerProfile` | One per player: names, date of birth, locale, `kycStatus` (manual), `wageringBlocked`, `withdrawalsBlocked`, restriction reason. |
+| `Session` | Server-side session: **HMAC of the token** (never the token), idle and absolute expiry, `revokedAt`, hashed IP, user agent. |
+| `PasswordToken` | Single-use reset / invitation tokens (HMAC stored), with expiry and `usedAt`. |
+| `Wallet` | One per user; `balance` in millimes, CHECK ≥ 0. |
+| `Transaction` | The append-only ledger: `type`, `status`, `amount`, `balanceBefore`/`balanceAfter`, `reference`, `idempotencyKey`, `betId`, `relatedId`, `createdById`. |
+| `AdjustmentRequest` | Four-eyes approval queue for balance adjustments above the configured threshold. |
+| `Bet` | A sportsbook ticket (`kind = SPORTS`) or a casino round (`kind = CASINO`, `gameKey`, `state`, `result` proof, optimistic-lock `version`). |
+| `BetLeg` | Snapshot of each sportsbook selection at placement (event, market, label, price in milli-odds) — settlement never depends on the live dataset. |
+| `FairnessSeed` | Per-player committed server seed (+ hash), client seed and nonce for casino rounds; revealed on rotation. |
+| `SlotFreeSpins` | Server-held free-spin state for the slot. |
+| `IdempotencyRecord` | Replayable response per `(userId, scope, key)` so a retried request returns the original outcome. |
+| `ResponsibleGamblingLimit` | Deposit / stake / loss / single-bet limits with a pending value + effective time for cooling-off on increases. |
+| `SelfExclusion` | Cooling-off and self-exclusion periods. |
+| `AuditLog` | Immutable record of security- and money-relevant events (see below). |
+| `Notification` | In-app notifications, stored as i18n keys + params, so they render in the reader's language. |
+| `Favorite` | A player's favourites (model, service and API exist; there is no toggle in the UI yet). |
+| `Setting` | Admin-editable runtime settings (JSON value); the registry in `src/server/settings/registry.ts` is the only source of valid keys. |
+| `RateLimitCounter` | Fixed-window counters for the database-backed rate-limit policies. |
 
 ```mermaid
 erDiagram
-    User      ||--o| Wallet       : "owns one"
-    User      ||--o{ Bet          : places
-    User      ||--o{ Session      : "signs in"
-    Wallet    ||--o{ Transaction  : "ledger of"
-    Bet       ||--o{ Transaction  : "stake out, payout in"
-    Bet       ||--|{ BetSelection : "one leg per selection"
-    BetSelection }o--|| Selection : "price frozen from"
-    Selection }o--|| Market       : "outcome of"
-    Market    }o--|| Event        : "offered on"
-    Event     }o--|| Competition  : "played in"
-    Event     }o--|| Team         : "home / away"
-    Competition }o--|| Sport      : "belongs to"
-    Competition }o--|| Country    : "staged in"
+    User ||--o| PlayerProfile : has
+    User ||--o| Wallet : owns
+    User ||--o{ Session : "signs in"
+    User ||--o{ PasswordToken : "reset / invite"
+    Wallet ||--o{ Transaction : ledger
+    User ||--o{ Transaction : "belongs to"
+    User ||--o{ Bet : places
+    Bet ||--o{ BetLeg : "sports legs"
+    Bet ||--o{ Transaction : "stake / payout"
+    User ||--o{ FairnessSeed : "casino seeds"
+    User ||--o{ ResponsibleGamblingLimit : sets
+    User ||--o{ SelfExclusion : "has"
+    User ||--o{ AdjustmentRequest : "subject of"
+    User ||--o{ Notification : receives
+    User ||--o{ AuditLog : "actor / target"
 ```
 
-Around that core sit the account tables (`payment_methods`,
-`payment_instruments`, `promotions`, `promotion_claims`, `notifications`,
-`favorites`), the compliance tables (`rg_limits`, `self_exclusions`,
-`kyc_records`, `audit_logs`) and one infrastructure table
-(`rate_limit_counters`).
+## Guarantees enforced by the database
 
----
+Applied in `prisma/migrations/<engine>/20261007150000_integrity_guards`:
 
-## Money is `Decimal(18, 3)`, never a float
+- `Wallet.balance >= 0`.
+- Each `Transaction` satisfies `balanceAfter = balanceBefore + amount`.
+- `Transaction` rejects UPDATE/DELETE, except a one-way `PENDING → final status`
+  transition (how a withdrawal is approved or reversed).
+- `AuditLog` rejects UPDATE/DELETE; on PostgreSQL TRUNCATE is blocked as well.
 
-The Tunisian dinar has three minor digits — 1 TND = 1000 millimes — so amounts
-land on thousandths. IEEE-754 cannot represent 0.001, 0.1 or 0.7 exactly, so a
-`double precision` ledger accumulates error on every arithmetic step: after a
-few thousand stakes and payouts the sum of the entries no longer equals the
-balance, and there is no way to tell rounding drift from a genuine
-discrepancy. `numeric(18, 3)` is exact at the currency's own precision, and 18
-digits leaves headroom no real balance will approach.
+On top of that the application: debits with a guarded atomic
+`updateMany(balance ≥ amount)`; makes every money movement idempotent through
+unique `(userId, idempotencyKey)`; and can `reconcileWallet` — the balance must
+equal the sum of all the user's ledger entries (a pending withdrawal already holds its funds, so it counts). The admin dashboard and
+the player detail page surface that reconciliation.
 
-Odds are `Decimal(10, 3)` for the same reason: a price of `1.833` has to survive
-the trip from feed to bet slip to settlement unchanged, because it is multiplied
-into a payout the operator is contractually bound to.
+**SQLite note:** an interactive transaction owns the only connection, so any read
+made through the global client while one is open waits on a lock the caller holds
+(Prisma error `P2028`). Code that runs inside `transact(tx => …)` must therefore
+read through `tx` — including settings (`getSetting(key, tx)`). The integration
+suite has a regression check for this.
 
-The one deliberate exception is `Market.line` at `Decimal(6, 2)` — quarter-lines
-(`-1.75`, `2.25`) need two decimals and nothing more, and comparing a line with
-`=` after a float round-trip is how settlement disputes start.
+## Migrations
 
----
+Migrations are engine-specific SQL, so they live in separate folders and
+`prisma.config.ts` picks the one that matches `DATABASE_URL`:
 
-## The ledger is append-only
-
-`transactions` is the record of truth for money. Rows are inserted and their
-`status` advances to a terminal state; **no row is ever rewritten**. A reversal
-is a new, compensating entry, so the history of what happened is preserved
-alongside the correction.
-
-Each row carries `balanceAfter`, the wallet balance immediately after that
-entry. This makes every row self-describing: an auditor can verify any point in
-time without replaying the table from the beginning, and the whole balance can
-be rebuilt from the ledger if the cache is ever lost.
-
-`wallets.balance` is that cache. It exists so a page load is one row read rather
-than an aggregate, and it is only ever written inside the same transaction that
-appends the ledger row, under a row lock. A reconciliation job asserts
-`wallets.balance = balanceAfter` of the newest completed transaction and alerts
-on any divergence. **Balance is derived from the ledger; it is never mutated on
-its own.**
-
-`withdrawable` is not a column at all — it is
-`balance - reserved - unmet bonus wagering`, computed on read so it can never
-disagree with its inputs.
-
----
-
-## Settling a bet
-
-One transaction, wallet row locked first, every write behind that lock.
-Parameters: `$1` user, `$2` payout, `$3` bet, `$4` stake to release, `$5` wallet
-(from step 1), `$6`/`$7` the new ledger row's id and reference, `$8` the balance
-step 3 returned.
-
-```sql
-BEGIN;
-
--- 1. Serialise on the wallet. Two settlements for the same user now queue
---    instead of interleaving and both reading a stale balance.
-SELECT id
-  FROM wallets
- WHERE "userId" = $1
-   FOR UPDATE;
-
--- 2. Close the bet, but only if it is still open. Zero rows affected means a
---    concurrent worker already settled it: ROLLBACK and do nothing.
-UPDATE bets
-   SET status = 'won', payout = $2, "settledAt" = now()
- WHERE id = $3 AND status = 'pending';
-
--- 3. Move the cache and release the stake reserved at placement. The arithmetic
---    is Postgres' own, on the row we hold the lock on, so no value that went
---    through the application can be written back stale.
-UPDATE wallets
-   SET balance  = balance + $2,
-       reserved = reserved - $4,
-       version  = version + 1
- WHERE id = $5
-RETURNING balance;
-
--- 4. Append the entry that explains the movement, stamped with the balance the
---    database actually arrived at.
-INSERT INTO transactions
-       (id, reference, "userId", "walletId", kind, status, amount,
-        currency, "balanceAfter", "betId", "descriptionKey", "completedAt")
-VALUES ($6, $7, $1, $5, 'bet_payout', 'completed', $2,
-        'TND', $8, $3, 'wallet.tx.betPayout', now());
-
-COMMIT;
+```
+prisma/migrations/sqlite/      20261007145255_init, 20261007150000_integrity_guards
+prisma/migrations/postgresql/  20261007145255_init, 20261007150000_integrity_guards
 ```
 
-In Prisma this is one `prisma.$transaction(async (tx) => { … })`, with step 1 as
-a `tx.$queryRaw` because `FOR UPDATE` has no query-builder equivalent. Four
-properties matter and all four come from the shape above:
+When you change the schema, generate and review a migration **for both engines**
+(`DATABASE_URL=file:./dev.db npm run db:migrate -- --name <change>`, then the same
+with a PostgreSQL URL) and commit both folders. `prisma migrate deploy` (via
+`npm run db:deploy`, and `build:vercel`) applies pending migrations and never
+resets data.
 
-- **Ordering.** The lock is taken before anything is read that will be written.
-- **Idempotency.** Step 2's `AND status = 'pending'` is the guard; the affected
-  row count decides whether the rest of the transaction runs. Placement has the
-  same protection through `bets.idempotencyKey`.
-- **Atomicity.** The bet's status, the cache and the ledger entry move together
-  or not at all. A crash between steps leaves no half-settled bet.
-- **Agreement.** Steps 3 and 4 could be written in either order — inside one
-  transaction nothing observes the difference. Computing the balance in the
-  database and reading it back with `RETURNING` is what guarantees the ledger
-  records the balance that exists rather than one the application inferred.
+## Commands
 
-Placement is the mirror image: lock the wallet, check the balance and the
-responsible-gambling limits, insert the `bet_stake` entry (negative `amount`),
-raise `reserved`, insert the bet and its legs with the odds frozen into
-`bet_selections.oddsAtPlacement`.
+```bash
+npm run db:deploy      # apply migrations to DATABASE_URL (safe, forward-only)
+npm run db:seed        # create the first administrator (ADMIN_EMAIL / ADMIN_PASSWORD)
+npm run db:migrate     # create a new migration in development
+npm run db:studio      # browse data
+npm run admin:recovery-link -- <email>   # break-glass single-use reset link
+```
 
----
+To reset a local database: stop the dev server, delete `dev.db*`, run
+`npm run db:deploy && npm run db:seed`, and restart the server (it holds the file
+and the generated client open).
 
-## What is deliberately not stored
+## Verification status
 
-Data that is not collected cannot leak, cannot be subpoenaed and carries no
-retention obligation. Three places in this schema are shaped by that:
+The full integration suite (216 checks: auth, RBAC, ledger, concurrency,
+withdrawals, four-eyes, casino rounds, page protection, audit, reports) passes
+against SQLite on both the dev server and a production build, and against
+PostgreSQL **using Prisma's embedded server (`prisma dev`, PGlite) with a
+single-connection pool**. That validates the PostgreSQL migrations, triggers and
+queries; it is not a load test of a networked, pooled PostgreSQL such as Neon or
+Supabase, which you should still smoke-test once after provisioning.
 
-| Table | Holds | Never holds |
-|---|---|---|
-| `sessions` | SHA-256 of the session token, hashed IP | the token, the raw IP |
-| `payment_instruments` | PSP vault token, `•••• 4242`, last four, brand | PAN, CVV, IBAN, wallet PIN |
-| `kyc_records` | provider, opaque case reference, decision, dates | documents, images, ID numbers, selfies |
+## Scale notes
 
-Card details are typed into the provider's hosted fields and never reach this
-application, which is what keeps SportGo out of PCI-DSS scope. Identity
-documents stay inside the verification provider, which is built and audited to
-hold them; SportGo keeps only the decision it needs in order to gate a
-withdrawal. Passwords are stored as Argon2id hashes (bcrypt only as a fallback,
-rehashed on next sign-in) and the plaintext never leaves the request handler
-that receives it.
-
----
-
-## Retention
-
-- **Financial records** (`bets`, `bet_selections`, `transactions`,
-  `promotion_claims`) — retained for the period the gambling regulator sets,
-  typically five years from the transaction or from account closure. The
-  foreign keys onto `users` are `Restrict` precisely so a user row cannot be
-  deleted out from under them.
-- **`audit_logs`** — append-only and retained on the same clock. The
-  application's database role should hold `INSERT` and `SELECT` on this table
-  and nothing else, so "append-only" is enforced by grants rather than by
-  convention. PII is redacted before it is written: an entry records that an
-  email changed, not what it changed to.
-- **`kyc_records`** — the decision is retained with the financial records; the
-  underlying artefacts are the provider's to expire under its own policy,
-  because we never receive them.
-- **`sessions`** — deleted once `expiresAt` has passed plus a short forensic
-  window. **`rate_limit_counters`** — swept on `expiresAt`.
-- **Erasure requests** — served by pseudonymising `users` (scrub the name,
-  email, phone and date of birth; stamp `deletedAt`) while the retention-bound
-  rows keep pointing at the now-anonymous id. A hard `DELETE` is neither
-  possible nor lawful here.
-
----
-
-## Before this runs against a real database
-
-1. **Wire the connection.** Prisma 7 rejects `url` in the datasource block
-   (P1012), so this is two steps: add `prisma.config.ts` reading `DATABASE_URL`
-   for the CLI, then install a driver adapter (`@prisma/adapter-pg`) and pass it
-   to the `new PrismaClient()` call in `src/server/db.ts`, which is written to be
-   the only place that changes. Put a pooler (PgBouncer, transaction mode) in
-   front of serverless runtimes.
-2. **Migrations and seed.** Nothing in this repo has ever been migrated; the
-   first `prisma migrate dev` generates the initial migration from this schema.
-   The demo dataset in `src/data` is the natural seed source.
-3. **Grants.** Separate roles for the app, the settlement worker and reporting.
-   No `UPDATE` or `DELETE` on `audit_logs`; no `DELETE` on `transactions`.
-4. **Reconciliation.** A scheduled job comparing `wallets.balance` against the
-   ledger tail, alerting rather than self-correcting.
-5. **Operations.** Encryption at rest, point-in-time recovery with rehearsed
-   restores, and monthly partitioning of `transactions` and `audit_logs` once
-   volume warrants it.
-6. **Everything in `compliance.requiredBeforeLaunch`**
-   (`src/config/app.config.ts`). A schema that can hold real bets is the
-   smallest part of being allowed to take them.
+- Dashboard time series are bucketed in application memory from at most 250,000
+  rows per query. Past that, use SQL `date_trunc` aggregation or a rollup table.
+- `BigInt` columns are serialised as numbers of millimes at the API edge; balances
+  beyond 2^53 millimes (9 × 10^12 TND) are out of scope.

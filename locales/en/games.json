@@ -195,8 +195,6 @@
   "casino.error.invalidRound": "That round does not exist",
   "casino.error.invalidAction": "That action is not allowed",
   "casino.error.roundSettled": "That round is already settled",
-  "games.serverFair.title": "Server-resolved",
-  "games.serverFair.body": "The shoe, the wheel and the payout are decided on the server with a cryptographic random source; your browser only draws the result. Unlike the provably-fair originals there is no commitment you can verify afterwards, so this is a weaker guarantee — it protects against a tampered client, not against the operator.",
   "games.signInToPlay": "Sign in to play",
   "games.fair.signIn": "Sign in to see your seed commitment. Every round is drawn from a seed pair the server committed to before you bet.",
   "games.fair.caveat": "The server committed to its seed before your bet, so it cannot pick an outcome after seeing it. Rotate to reveal the old seed, then re-derive any past round yourself on the verify page.",

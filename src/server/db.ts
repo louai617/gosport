@@ -60,14 +60,17 @@ function createClient(): PrismaClient {
           "Point DATABASE_URL at PostgreSQL (see docs/DEPLOYMENT.md).",
       );
     }
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { PrismaLibSql } = require("@prisma/adapter-libsql") as typeof import("@prisma/adapter-libsql");
     return new PrismaClient({ adapter: new PrismaLibSql({ url }) });
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { PrismaPg } = require("@prisma/adapter-pg") as typeof import("@prisma/adapter-pg");
-  return new PrismaClient({ adapter: new PrismaPg({ connectionString: url }) });
+  // Serverless instances multiply, so each one should hold few connections; the
+  // `pg` default of 10 per instance exhausts a small database quickly.
+  const max = Number.parseInt(process.env.DATABASE_POOL_MAX ?? "", 10);
+  return new PrismaClient({
+    adapter: new PrismaPg({ connectionString: url, ...(max > 0 ? { max } : {}) }),
+  });
 }
 
 let instance: PrismaClient | undefined;
