@@ -319,8 +319,10 @@ export function settle(state: BlackjackState): BlackjackState {
         payout += hand.bet;
       } else {
         hand.result = "BLACKJACK";
-        // 3:2 — stake back plus one and a half times the stake.
-        payout += Math.round(hand.bet * 2.5);
+        // 3:2 — stake back plus one and a half times the stake. Rounded to the
+        // millime, not the whole dinar: stakes are decimal, and rounding to an
+        // integer would pay a 1.00 stake 3.00 instead of 2.50.
+        payout += Math.round(hand.bet * 2.5 * 1000) / 1000;
       }
       continue;
     }

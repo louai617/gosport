@@ -24,6 +24,8 @@
  * ──────────────────────────────────────────────────────────────────────────
  */
 
+import { shuffleIndicesFromFloats } from "@/lib/games/shuffle";
+
 const encoder = new TextEncoder();
 
 /** Web Crypto is present in modern browsers and in Node 18+. */
@@ -131,28 +133,10 @@ export async function shuffleIndices(
   input: SeedInput,
   length: number,
 ): Promise<number[]> {
-  const indices = Array.from({ length }, (_, index) => index);
   const floats = await generateFloats(input, Math.max(0, length - 1));
-
-  for (let i = length - 1; i > 0; i -= 1) {
-    const draw = floats[length - 1 - i] ?? 0;
-    const j = Math.floor(draw * (i + 1));
-    const a = indices[i]!;
-    const b = indices[j]!;
-    indices[i] = b;
-    indices[j] = a;
-  }
-
-  return indices;
+  return shuffleIndicesFromFloats(length, floats);
 }
 
-/**
- * Re-derives a past round from a revealed server seed.
- *
- * This is the whole point of the scheme: after rotation the player runs the
- * same inputs through the same function and compares. The verifier page calls
- * exactly this, with no privileged access of any kind.
- */
 export interface VerificationResult {
   /** True when the revealed seed hashes to the commitment shown before the bet. */
   seedMatchesCommitment: boolean;

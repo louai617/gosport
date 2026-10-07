@@ -151,7 +151,6 @@ export function PlinkoBoard() {
         onBet={drop}
         betLabel={t("games.plinko.drop")}
         busy={!ready}
-        serverBalance={balance}
         summary={[
           { label: t("games.plinko.maxWin"), value: `${maxMultiplier}×` },
           {

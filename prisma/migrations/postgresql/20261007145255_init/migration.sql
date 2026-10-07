@@ -195,6 +195,7 @@ CREATE TABLE "Bet" (
     "placedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "settledAt" TIMESTAMP(3),
     "settledById" TEXT,
+    "version" INTEGER NOT NULL DEFAULT 0,
     "state" JSONB,
     "result" JSONB,
 
@@ -235,6 +236,16 @@ CREATE TABLE "FairnessSeed" (
     "revealedAt" TIMESTAMP(3),
 
     CONSTRAINT "FairnessSeed_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "SlotFreeSpins" (
+    "userId" TEXT NOT NULL,
+    "remaining" INTEGER NOT NULL DEFAULT 0,
+    "stake" BIGINT NOT NULL DEFAULT 0,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "SlotFreeSpins_pkey" PRIMARY KEY ("userId")
 );
 
 -- CreateTable

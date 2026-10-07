@@ -2,7 +2,7 @@
   "games.title": "Games",
   "games.subtitle": "In-house originals with a verifiable result, plus the provider content a licensed operator would carry.",
   "games.lobbyNotice": "Casino games settle in seconds rather than over ninety minutes, which makes losses accumulate far faster than in sports betting. Everything here is simulated: the balance is a session number in your browser, no money is involved, and no round can be staked for real.",
-  "games.demoNotice": "Simulated round, simulated balance. The result is computed in your browser and nothing is staked, credited or recorded anywhere.",
+  "games.demoNotice": "Demonstration credits, not money. Every round is decided on the server from your committed seed, and each stake and payout is recorded in your account ledger.",
   "games.playableSummary": "{count} originals are playable. Everything else needs a provider connection, which needs a casino licence first.",
   "games.category.originals": "Originals",
   "games.category.slots": "Slots",
@@ -28,7 +28,7 @@
   "games.provablyFair.short": "Provably fair",
   "games.provablyFair.title": "Fairness",
   "games.rtpValue": "RTP {value}%",
-  "games.sessionBalance": "Session balance",
+  "games.sessionBalance": "Your balance",
   "games.max": "Max",
   "games.chance": "Win chance",
   "games.multiplier": "Multiplier",
@@ -196,5 +196,13 @@
   "casino.error.invalidAction": "That action is not allowed",
   "casino.error.roundSettled": "That round is already settled",
   "games.serverFair.title": "Server-resolved",
-  "games.serverFair.body": "The shoe, the wheel and the payout are decided on the server with a cryptographic random source; your browser only draws the result. Unlike the provably-fair originals there is no commitment you can verify afterwards, so this is a weaker guarantee — it protects against a tampered client, not against the operator."
+  "games.serverFair.body": "The shoe, the wheel and the payout are decided on the server with a cryptographic random source; your browser only draws the result. Unlike the provably-fair originals there is no commitment you can verify afterwards, so this is a weaker guarantee — it protects against a tampered client, not against the operator.",
+  "games.signInToPlay": "Sign in to play",
+  "games.fair.signIn": "Sign in to see your seed commitment. Every round is drawn from a seed pair the server committed to before you bet.",
+  "games.fair.caveat": "The server committed to its seed before your bet, so it cannot pick an outcome after seeing it. Rotate to reveal the old seed, then re-derive any past round yourself on the verify page.",
+  "games.verify.slotsResult": "Reel stops {stops} · pays {multiplier}×",
+  "games.verify.rouletteResult": "The ball lands on {pocket}",
+  "games.verify.blackjackResult": "First four cards dealt (you, dealer, you, dealer): {cards}",
+  "casino.error.roundInProgress": "Finish your open round before changing your seed",
+  "casino.error.concurrentAction": "That round just changed — try again"
 }

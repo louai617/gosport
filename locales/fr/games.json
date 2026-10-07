@@ -2,7 +2,7 @@
   "games.title": "Jeux",
   "games.subtitle": "Des jeux maison au résultat vérifiable, ainsi que le contenu fournisseur qu'un opérateur agréé proposerait.",
   "games.lobbyNotice": "Les jeux de casino se règlent en quelques secondes plutôt qu'en quatre-vingt-dix minutes, ce qui fait que les pertes s'accumulent bien plus vite qu'aux paris sportifs. Tout est simulé ici : le solde est un nombre de session dans votre navigateur, aucun argent n'est en jeu et aucune partie ne peut être misée réellement.",
-  "games.demoNotice": "Partie simulée, solde simulé. Le résultat est calculé dans votre navigateur ; rien n'est misé, crédité ni enregistré nulle part.",
+  "games.demoNotice": "Crédits de démonstration, pas de l’argent. Chaque tour est décidé côté serveur à partir de votre graine engagée, et chaque mise et gain est inscrit dans le grand livre de votre compte.",
   "games.playableSummary": "{count} jeux maison sont jouables. Tout le reste nécessite une connexion fournisseur, qui nécessite d'abord une licence casino.",
   "games.category.originals": "Jeux maison",
   "games.category.slots": "Machines à sous",
@@ -28,7 +28,7 @@
   "games.provablyFair.short": "Équité vérifiable",
   "games.provablyFair.title": "Équité",
   "games.rtpValue": "RTP {value} %",
-  "games.sessionBalance": "Solde de session",
+  "games.sessionBalance": "Votre solde",
   "games.max": "Max",
   "games.chance": "Chance de gain",
   "games.multiplier": "Multiplicateur",
@@ -196,5 +196,13 @@
   "casino.error.invalidAction": "Cette action n'est pas autorisée",
   "casino.error.roundSettled": "Cette manche est déjà réglée",
   "games.serverFair.title": "Résolu côté serveur",
-  "games.serverFair.body": "Le sabot, la roue et le gain sont déterminés sur le serveur avec une source aléatoire cryptographique ; votre navigateur ne fait qu'afficher le résultat. Contrairement aux jeux maison à équité vérifiable, aucun engagement n'est vérifiable après coup : la garantie est donc plus faible — elle protège d'un client falsifié, pas de l'opérateur."
+  "games.serverFair.body": "Le sabot, la roue et le gain sont déterminés sur le serveur avec une source aléatoire cryptographique ; votre navigateur ne fait qu'afficher le résultat. Contrairement aux jeux maison à équité vérifiable, aucun engagement n'est vérifiable après coup : la garantie est donc plus faible — elle protège d'un client falsifié, pas de l'opérateur.",
+  "games.signInToPlay": "Connectez-vous pour jouer",
+  "games.fair.signIn": "Connectez-vous pour voir votre engagement de graine. Chaque tour est tiré d’une paire de graines que le serveur a engagée avant votre mise.",
+  "games.fair.caveat": "Le serveur a engagé sa graine avant votre mise : il ne peut pas choisir un résultat après l’avoir vue. Renouvelez pour révéler l’ancienne graine, puis recalculez vous-même un tour passé sur la page de vérification.",
+  "games.verify.slotsResult": "Arrêts des rouleaux {stops} · paie {multiplier}×",
+  "games.verify.rouletteResult": "La bille s’arrête sur {pocket}",
+  "games.verify.blackjackResult": "Quatre premières cartes (vous, croupier, vous, croupier) : {cards}",
+  "casino.error.roundInProgress": "Terminez votre tour en cours avant de changer de graine",
+  "casino.error.concurrentAction": "Ce tour vient de changer — réessayez"
 }

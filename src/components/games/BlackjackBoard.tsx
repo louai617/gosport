@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { BlackjackView, Card, HandResult, Suit } from "@/lib/games/blackjack";
 import { cn } from "@/lib/cn";
 import { formatAmount } from "@/lib/format";
@@ -27,7 +27,7 @@ const RESULT_TONE: Record<HandResult, BadgeTone> = {
 
 export function BlackjackBoard() {
   const { t, locale } = useI18n();
-  const { balance, ready, play, act } = useWallet();
+  const { balance, ready, signedIn, play, act, resume } = useWallet();
 
   const [stake, setStake] = useState(5);
   const [view, setView] = useState<BlackjackView | null>(null);
@@ -36,6 +36,21 @@ export function BlackjackBoard() {
   const [error, setError] = useState<string | null>(null);
 
   const inHand = view !== null && view.phase !== "settled";
+
+  // A reload mid-hand resumes it: the stake is already taken, and the hand is
+  // held on the server, so it is shown again rather than stranded.
+  useEffect(() => {
+    if (!ready || !signedIn) return;
+    let cancelled = false;
+    void resume<BlackjackView>("blackjack").then((open) => {
+      if (cancelled || !open || open.settled) return;
+      setView(open.result);
+      setRoundId(open.roundId);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, signedIn, resume]);
 
   const deal = async () => {
     setBusy(true);
@@ -58,7 +73,7 @@ export function BlackjackBoard() {
     setBusy(true);
     setError(null);
 
-    const response = await act<BlackjackView>(roundId, action);
+    const response = await act<BlackjackView>("blackjack", roundId, action);
     if (!response.ok || !response.result) {
       setError(response.errorKey ?? "error.generic");
       setBusy(false);

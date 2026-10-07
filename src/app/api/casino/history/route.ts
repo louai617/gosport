@@ -1,18 +1,16 @@
 import { z } from "zod";
 import { ok, withRoute } from "@/server/api";
-import { readHistory } from "@/server/casino/service";
-import { resolveCasinoSession } from "@/server/casino/session";
+import { getHistory } from "@/server/casino/service";
 
-/** GET /api/casino/history — settled rounds for the caller's session. */
+/** GET /api/casino/history — the caller's own settled rounds, newest first. */
 export const GET = withRoute(
-  async ({ input }) => {
-    const session = await resolveCasinoSession();
-    return ok(
-      readHistory(session.sessionId, session.openingBalance, input.limit ?? 50),
-    );
-  },
+  async ({ input, user }) => ok(await getHistory(user, input.game, input.limit ?? 30)),
   {
-    schema: z.object({ limit: z.coerce.number().int().min(1).max(200).optional() }),
+    schema: z.object({
+      game: z.string().max(24).optional(),
+      limit: z.coerce.number().int().min(1).max(100).optional(),
+    }),
+    auth: "user",
     rateLimit: "api",
   },
 );

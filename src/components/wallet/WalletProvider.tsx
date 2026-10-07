@@ -57,7 +57,9 @@ interface WalletValue {
   /** POST JSON with CSRF. Resolves instead of throwing; `ok` says what happened. */
   request: <T>(path: string, body: Record<string, unknown>) => Promise<RequestOutcome<T>>;
   play: <T>(game: string, params: PlayParams) => Promise<PlayOutcome<T>>;
-  act: <T>(roundId: string, action: string, params?: Record<string, unknown>) => Promise<PlayOutcome<T>>;
+  act: <T>(game: string, roundId: string, action: string, params?: Record<string, unknown>) => Promise<PlayOutcome<T>>;
+  /** The caller's open round for a game, so a reload resumes it. */
+  resume: <T>(game: string, roundId?: string) => Promise<{ roundId: string; result: T; settled: boolean } | null>;
 }
 
 const WalletContext = createContext<WalletValue | null>(null);
@@ -172,14 +174,35 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   );
 
   const act = useCallback(
-    <T,>(roundId: string, action: string, params: Record<string, unknown> = {}) =>
-      post<T>("/api/casino/action", { roundId, action, ...params }),
+    <T,>(game: string, roundId: string, action: string, params: Record<string, unknown> = {}) =>
+      post<T>("/api/casino/action", { game, roundId, action, ...params }),
     [post],
   );
 
+  const resume = useCallback(
+    async <T,>(game: string, roundId?: string): Promise<{ roundId: string; result: T; settled: boolean } | null> => {
+      try {
+        const query = `game=${encodeURIComponent(game)}${roundId ? `&roundId=${encodeURIComponent(roundId)}` : ""}`;
+        const response = await fetch(`/api/casino/active?${query}`, { cache: "no-store" });
+        const body = (await response.json()) as Envelope<{
+          balance: number;
+          roundId: string;
+          result: T;
+          settled: boolean;
+        } | null>;
+        if (!body.ok || !body.data) return null;
+        setBalance(body.data.balance);
+        return { roundId: body.data.roundId, result: body.data.result, settled: body.data.settled };
+      } catch {
+        return null;
+      }
+    },
+    [],
+  );
+
   const value = useMemo<WalletValue>(
-    () => ({ balance, signedIn, ready, error, applyBalance, refresh: bootstrap, request, play, act }),
-    [balance, signedIn, ready, error, applyBalance, bootstrap, request, play, act],
+    () => ({ balance, signedIn, ready, error, applyBalance, refresh: bootstrap, request, play, act, resume }),
+    [balance, signedIn, ready, error, applyBalance, bootstrap, request, play, act, resume],
   );
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;

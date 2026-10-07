@@ -7,16 +7,16 @@ import {
   DICE_MAX_TARGET,
   DICE_MIN_TARGET,
   diceMultiplier,
-  settleDice,
   winChance,
 } from "@/lib/games/dice";
 import { round2 } from "@/lib/games/constants";
 import { useI18n } from "@/i18n/I18nProvider";
-import { useGameStore } from "@/store/gameStore";
 import type { DiceDirection } from "@/types/games";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import type { DicePlayResult } from "@/types/casino";
+import { Alert } from "@/components/ui/Alert";
+import { useWallet } from "@/components/wallet/WalletProvider";
 import { StakePanel } from "./StakePanel";
-import { useGameRound } from "./useGameRound";
 
 /**
  * Dice.
@@ -27,9 +27,9 @@ import { useGameRound } from "./useGameRound";
  */
 export function DiceBoard() {
   const { t, locale } = useI18n();
-  const { begin, draw, settle } = useGameRound();
-  const busy = useGameStore((state) => state.busy);
-  const setBusy = useGameStore((state) => state.setBusy);
+  const { play: placeBet } = useWallet();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const [stake, setStake] = useState(1);
   const [target, setTarget] = useState(50);
@@ -41,24 +41,19 @@ export function DiceBoard() {
   const multiplier = diceMultiplier(target, direction);
 
   const play = async () => {
-    const round = begin(stake);
-    if (!round) return;
-
     setBusy(true);
-    const [value] = await draw(round, 1);
-    const result = settleDice(value ?? 0, target, direction);
-
-    setRoll(result.roll);
-    setWon(result.won);
-    settle({
-      gameKey: "dice",
-      stake,
-      multiplier: result.won ? result.multiplier : 0,
-      result: result.roll,
-      outcome: result.won ? "won" : "lost",
-      round,
-    });
+    setError(null);
+    // The server draws the roll from the committed seed and settles the bet;
+    // this only reports back what it decided.
+    const response = await placeBet<DicePlayResult>("dice", { stake, target, direction });
     setBusy(false);
+
+    if (!response.ok || !response.result) {
+      setError(response.errorKey ?? "error.generic");
+      return;
+    }
+    setRoll(response.result.roll);
+    setWon(response.result.won);
   };
 
   // The win band always starts at one end of the track, so its width is the
@@ -68,6 +63,11 @@ export function DiceBoard() {
   return (
     <>
       <section className="rounded-xl border border-line bg-surface p-5 sm:p-6">
+        {error ? (
+          <Alert tone="danger" className="mb-4">
+            {t(error)}
+          </Alert>
+        ) : null}
         <div className="flex min-h-24 items-center justify-center">
           {roll === null ? (
             <p className="text-small text-ink-subtle">{t("games.dice.prompt")}</p>

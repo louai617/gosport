@@ -8,6 +8,9 @@ import { settleDice } from "@/lib/games/dice";
 import { multiplierFromFloat } from "@/lib/games/limbo";
 import { minePositions } from "@/lib/games/mines";
 import { dropPlinko } from "@/lib/games/plinko";
+import { spinFromFloats } from "@/lib/games/slots";
+import { pocketFromFloat } from "@/lib/games/roulette";
+import { buildShoe, shuffleShoe } from "@/lib/games/blackjack";
 import { TILE_COUNT } from "@/lib/games/mines";
 import { cn } from "@/lib/cn";
 import { useT } from "@/i18n/I18nProvider";
@@ -15,11 +18,11 @@ import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { useGameStore } from "@/store/gameStore";
+import { useFairness } from "./useFairness";
 
-type VerifiableGame = Extract<GameKey, "dice" | "limbo" | "crash" | "mines" | "plinko">;
+type VerifiableGame = Extract<GameKey, "dice" | "limbo" | "crash" | "mines" | "plinko" | "slots" | "roulette" | "blackjack">;
 
-const GAMES: VerifiableGame[] = ["dice", "limbo", "crash", "mines", "plinko"];
+const GAMES: VerifiableGame[] = ["dice", "limbo", "crash", "mines", "plinko", "slots", "roulette", "blackjack"];
 
 interface Verification {
   commitmentMatches: boolean | null;
@@ -38,7 +41,8 @@ interface Verification {
 export function FairnessVerifier() {
   const t = useT();
 
-  const previousPair = useGameStore((state) => state.previousPair);
+  const { state: fairness } = useFairness();
+  const previousPair = fairness?.previous[0] ?? null;
   const [serverSeed, setServerSeed] = useState("");
   const [clientSeed, setClientSeed] = useState("");
   const [nonce, setNonce] = useState("0");
@@ -54,6 +58,7 @@ export function FairnessVerifier() {
     setExpectedHash(previousPair.serverSeedHash);
     setNonce("0");
   };
+  // Nonce 0 is the pair's first round; the player can step to any later one.
 
   const verify = async () => {
     if (!serverSeed || !clientSeed) return;
@@ -86,6 +91,20 @@ export function FairnessVerifier() {
       summary = t("games.verify.minesResult", {
         tiles: positions.map((index) => index + 1).join(", "),
       });
+    } else if (game === "slots") {
+      floats = await generateFloats(input, 5);
+      const spin = spinFromFloats(floats);
+      summary = t("games.verify.slotsResult", { stops: spin.stops.join(", "), multiplier: spin.totalMultiplier.toFixed(2) });
+    } else if (game === "roulette") {
+      floats = await generateFloats(input, 1);
+      summary = t("games.verify.rouletteResult", { pocket: pocketFromFloat(floats[0] ?? 0) });
+    } else if (game === "blackjack") {
+      floats = await generateFloats(input, buildShoe().length);
+      const shoe = shuffleShoe(buildShoe(), floats);
+      const deal = [shoe[shoe.length - 1], shoe[shoe.length - 2], shoe[shoe.length - 3], shoe[shoe.length - 4]]
+        .map((card) => (card ? `${card.rank}${card.suit.charAt(0).toUpperCase()}` : "?"))
+        .join(" ");
+      summary = t("games.verify.blackjackResult", { cards: deal });
     } else {
       floats = await generateFloats(input, 12);
       const dropped = dropPlinko(floats, 12, "medium");

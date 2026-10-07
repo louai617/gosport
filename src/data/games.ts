@@ -105,7 +105,6 @@ export const GAMES: CasinoGame[] = [
     rtp: 36 / 37,
     houseEdge: 1 / 37,
     maxMultiplier: 36,
-    provablyFair: false,
   }),
   // Four-deck shoe, dealer stands on soft 17, blackjack pays 3:2. The return
   // depends on how the hand is played, so no single RTP is quoted.
@@ -115,7 +114,6 @@ export const GAMES: CasinoGame[] = [
     rtp: null,
     houseEdge: null,
     maxMultiplier: 3,
-    provablyFair: false,
   }),
   original("crash", "crash", 8, 980, { featured: true }),
   original("dice", "dice", 224, 940, { featured: true }),

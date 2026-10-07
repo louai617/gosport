@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Bomb, Gem } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { formatAmount } from "@/lib/format";
@@ -10,113 +10,112 @@ import {
   MIN_MINES,
   TILE_COUNT,
   minesMultiplier,
-  minePositions,
   nextTileSafeChance,
 } from "@/lib/games/mines";
 import { useI18n } from "@/i18n/I18nProvider";
-import { useGameStore } from "@/store/gameStore";
+import type { MinesView } from "@/types/casino";
+import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
+import { useWallet } from "@/components/wallet/WalletProvider";
 import { StakePanel } from "./StakePanel";
-import { useGameRound, type BeginResult } from "./useGameRound";
-
-type Phase = "idle" | "playing" | "busted" | "cashed";
 
 /**
  * Mines.
  *
- * Bombs are placed by shuffling all 25 tiles from the committed seed and
- * taking the first `mineCount` — so the board is fixed before the first click
- * and cannot shift under the player. The grid stays keyboard-operable: every
- * tile is a real button, and the revealed board is announced on settlement.
+ * The board is fixed on the server when the round starts — all 25 tiles are
+ * shuffled from the committed seed and the first `mineCount` are bombs — and the
+ * browser is never told where they are until the round ends. Every reveal and
+ * the cash-out are requests the server answers; this component only paints the
+ * result. The grid stays keyboard-operable: every tile is a real button.
  */
 export function MinesBoard() {
   const { t, locale } = useI18n();
-  const { begin, drawShuffle, settle } = useGameRound();
-  const setBusy = useGameStore((state) => state.setBusy);
+  const { play, act, resume, ready, signedIn } = useWallet();
 
   const [stake, setStake] = useState(1);
   const [mineCount, setMineCount] = useState(3);
-  const [phase, setPhase] = useState<Phase>("idle");
-  const [mines, setMines] = useState<Set<number>>(new Set());
-  const [revealed, setRevealed] = useState<number[]>([]);
-  const [exploded, setExploded] = useState<number | null>(null);
-  const [round, setRound] = useState<BeginResult | null>(null);
+  const [view, setView] = useState<MinesView | null>(null);
+  const [roundId, setRoundId] = useState<string | null>(null);
+  const [roundStake, setRoundStake] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const playing = phase === "playing";
+  // A reload mid-round resumes it; the stake is not stranded.
+  useEffect(() => {
+    if (!ready || !signedIn) return;
+    let cancelled = false;
+    void resume<MinesView>("mines").then((open) => {
+      if (cancelled || !open || open.settled) return;
+      setView(open.result);
+      setRoundId(open.roundId);
+      setMineCount(open.result.mineCount);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, signedIn, resume]);
+
+  const playing = view?.phase === "playing";
+  const revealed = view?.revealed ?? [];
   const settledCount = revealed.length;
-  const current = minesMultiplier(mineCount, settledCount);
-  const next = minesMultiplier(mineCount, settledCount + 1);
-  const safeChance = nextTileSafeChance(mineCount, settledCount);
+  const activeMines = view?.mineCount ?? mineCount;
+  const current = minesMultiplier(activeMines, settledCount);
+  const next = minesMultiplier(activeMines, settledCount + 1);
+  const safeChance = nextTileSafeChance(activeMines, settledCount);
+  const finished = view !== null && view.phase !== "playing";
+  const phase = view?.phase ?? "idle";
 
   const start = async () => {
-    const started = begin(stake);
-    if (!started) return;
-
     setBusy(true);
-    const shuffled = await drawShuffle(started, TILE_COUNT);
-
-    setMines(minePositions(shuffled, mineCount));
-    setRevealed([]);
-    setExploded(null);
-    setRound(started);
-    setPhase("playing");
+    setError(null);
+    const response = await play<MinesView>("mines", { stake, mineCount });
     setBusy(false);
-  };
-
-  const cashOut = useCallback(() => {
-    if (!playing || !round || settledCount === 0) return;
-
-    settle({
-      gameKey: "mines",
-      stake,
-      multiplier: current,
-      result: settledCount,
-      outcome: "cashed_out",
-      round,
-    });
-    setPhase("cashed");
-  }, [playing, round, settledCount, settle, stake, current]);
-
-  const reveal = (index: number) => {
-    if (!playing || revealed.includes(index) || !round) return;
-
-    if (mines.has(index)) {
-      setExploded(index);
-      setPhase("busted");
-      settle({
-        gameKey: "mines",
-        stake,
-        multiplier: 0,
-        result: revealed.length,
-        outcome: "lost",
-        round,
-      });
+    if (!response.ok || !response.result || !response.roundId) {
+      setError(response.errorKey ?? "error.generic");
       return;
     }
-
-    const nextRevealed = [...revealed, index];
-    setRevealed(nextRevealed);
-
-    // Clearing every safe tile ends the round at the top of the ladder;
-    // leaving it "playing" would offer a cash-out with nothing left to risk.
-    if (nextRevealed.length === TILE_COUNT - mineCount) {
-      settle({
-        gameKey: "mines",
-        stake,
-        multiplier: minesMultiplier(mineCount, nextRevealed.length),
-        result: nextRevealed.length,
-        outcome: "won",
-        round,
-      });
-      setPhase("cashed");
-    }
+    setView(response.result);
+    setRoundId(response.roundId);
+    setRoundStake(stake);
   };
 
-  const finished = phase === "busted" || phase === "cashed";
+  const send = useCallback(
+    async (action: "reveal" | "cashout", tile?: number) => {
+      if (!roundId || busy) return;
+      setBusy(true);
+      setError(null);
+      const response = await act<MinesView>("mines", roundId, action, tile === undefined ? {} : { tile });
+      setBusy(false);
+      if (!response.ok || !response.result) {
+        setError(response.errorKey ?? "error.generic");
+        return;
+      }
+      setView(response.result);
+    },
+    [act, roundId, busy],
+  );
+
+  const reveal = (index: number) => {
+    if (!playing || revealed.includes(index)) return;
+    void send("reveal", index);
+  };
+
+  const cashOut = () => {
+    if (!playing || settledCount === 0) return;
+    void send("cashout");
+  };
+
+  const mines = new Set(view?.mines ?? []);
+  const exploded = view?.exploded ?? null;
 
   return (
     <>
       <section className="rounded-xl border border-line bg-surface p-4 sm:p-5">
+        {error ? (
+          <Alert tone="danger" className="mb-4">
+            {t(error)}
+          </Alert>
+        ) : null}
         <div
           role="grid"
           aria-label={t("games.mines.board")}
@@ -132,7 +131,7 @@ export function MinesBoard() {
                 key={index}
                 type="button"
                 role="gridcell"
-                disabled={!playing || isRevealed}
+                disabled={!playing || isRevealed || busy}
                 onClick={() => reveal(index)}
                 aria-label={t("games.mines.tile", { index: index + 1 })}
                 className={cn(
@@ -163,7 +162,7 @@ export function MinesBoard() {
         <p role="status" aria-live="polite" className="sr-only">
           {phase === "busted"
             ? t("games.mines.busted")
-            : phase === "cashed"
+            : phase === "cashed" || phase === "cleared"
               ? t("games.mines.cashed", { multiplier: current.toFixed(2) })
               : ""}
         </p>
@@ -182,6 +181,7 @@ export function MinesBoard() {
         stake={stake}
         onStakeChange={setStake}
         onBet={start}
+        busy={busy}
         disabled={playing}
         betLabel={t("games.mines.play")}
         action={
@@ -196,7 +196,7 @@ export function MinesBoard() {
               {settledCount === 0
                 ? t("games.mines.pickOne")
                 : t("games.crash.cashOut", {
-                    amount: formatAmount(round2(stake * current), locale),
+                    amount: formatAmount(round2((roundStake || stake) * current), locale),
                   })}
             </Button>
           ) : undefined
@@ -210,7 +210,7 @@ export function MinesBoard() {
           {
             label: t("games.payout"),
             value: formatAmount(
-              round2(stake * (settledCount > 0 ? current : next)),
+              round2((playing ? roundStake || stake : stake) * (settledCount > 0 ? current : next)),
               locale,
             ),
             emphasis: true,

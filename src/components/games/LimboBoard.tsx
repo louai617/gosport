@@ -4,11 +4,12 @@ import { useState } from "react";
 import { cn } from "@/lib/cn";
 import { formatAmount } from "@/lib/format";
 import { round2 } from "@/lib/games/constants";
-import { chanceOfReaching, settleLimbo } from "@/lib/games/limbo";
+import { chanceOfReaching } from "@/lib/games/limbo";
 import { useI18n } from "@/i18n/I18nProvider";
-import { useGameStore } from "@/store/gameStore";
+import type { LimboPlayResult } from "@/types/casino";
+import { Alert } from "@/components/ui/Alert";
+import { useWallet } from "@/components/wallet/WalletProvider";
 import { StakePanel } from "./StakePanel";
-import { useGameRound } from "./useGameRound";
 
 const MIN_TARGET = 1.01;
 const MAX_TARGET = 1_000_000;
@@ -16,9 +17,9 @@ const MAX_TARGET = 1_000_000;
 /** Limbo: pick a multiplier, win if the draw reaches it. */
 export function LimboBoard() {
   const { t, locale } = useI18n();
-  const { begin, draw, settle } = useGameRound();
-  const busy = useGameStore((state) => state.busy);
-  const setBusy = useGameStore((state) => state.setBusy);
+  const { play: placeBet } = useWallet();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const [stake, setStake] = useState(1);
   const [target, setTarget] = useState(2);
@@ -28,30 +29,23 @@ export function LimboBoard() {
   const chance = chanceOfReaching(target);
 
   const play = async () => {
-    const round = begin(stake);
-    if (!round) return;
-
     setBusy(true);
-    const [value] = await draw(round, 1);
-    const outcome = settleLimbo(value ?? 0, target);
-
-    setResult(outcome.result);
-    setWon(outcome.won);
-    settle({
-      gameKey: "limbo",
-      stake,
-      multiplier: outcome.multiplier,
-      result: outcome.result,
-      outcome: outcome.won ? "won" : "lost",
-      round,
-    });
+    setError(null);
+    const response = await placeBet<LimboPlayResult>("limbo", { stake, target });
     setBusy(false);
+
+    if (!response.ok || !response.result) {
+      setError(response.errorKey ?? "error.generic");
+      return;
+    }
+    setResult(response.result.result);
+    setWon(response.result.won);
   };
 
   return (
     <>
       <section className="grid min-h-64 place-items-center rounded-xl border border-line bg-surface p-6">
-        {result === null ? (
+        {error ? <Alert tone="danger">{t(error)}</Alert> : result === null ? (
           <p className="text-small text-ink-subtle">{t("games.limbo.prompt")}</p>
         ) : (
           <div className="text-center">

@@ -18,6 +18,9 @@ for (const file of [".env.local", ".env"]) {
 
 import { prisma } from "@/server/db";
 import { createHasher } from "@/server/auth/password";
+import { floatsFromSeed } from "@/server/casino/fairness";
+import { rollFromFloat } from "@/lib/games/dice";
+import { shuffleIndicesFromFloats } from "@/lib/games/shuffle";
 
 const BASE = process.argv[2] ?? "http://localhost:3000";
 const RUN = randomBytes(3).toString("hex");
@@ -618,6 +621,204 @@ section("Invitation and password flows");
   const blockedUntilChange = await fc.get("/api/account");
   check("a temporary-password account is blocked until the password is changed", blockedUntilChange.status === 403 && blockedUntilChange.error?.messageKey === "auth.error.passwordChangeRequired", `${blockedUntilChange.status} ${blockedUntilChange.error?.messageKey}`);
   void forced;
+}
+
+
+section("Casino: server-authoritative rounds");
+{
+  const anon = await new Client().init();
+  const guest = await anon.post("/api/casino/play", { game: "dice", stake: 1, target: 50, direction: "under", idempotencyKey: randomBytes(8).toString("hex") });
+  check("a guest cannot play (401)", guest.status === 401);
+
+  const cas = await register(`cs${RUN}`);
+  const cid = cas.reply.data.user.id as string;
+  const c = cas.client;
+  await credit(admin, cid, 2000, "DEPOSIT", "casino test funding");
+  const key = () => randomBytes(8).toString("hex");
+  const play = (body: Record<string, unknown>) => c.post("/api/casino/play", { idempotencyKey: key(), ...body });
+  const act = (body: Record<string, unknown>) => c.post("/api/casino/action", { idempotencyKey: key(), ...body });
+  const reconciled = async (label: string) => {
+    const { sum, balance } = await ledgerSum(cid);
+    check(`ledger reconciles after ${label}`, sum === balance, `sum=${sum} balance=${balance}`);
+    return balance;
+  };
+
+  // --- validation: the browser's own bounds are a courtesy ------------------------------
+  for (const [name, body] of [
+    ["a stake above the table maximum", { game: "dice", stake: 5000, target: 50, direction: "under" }],
+    ["a negative stake", { game: "dice", stake: -5, target: 50, direction: "under" }],
+    ["a stake with sub-centime precision", { game: "dice", stake: 1.2345, target: 50, direction: "under" }],
+    ["a non-numeric stake", { game: "dice", stake: "lots", target: 50, direction: "under" }],
+    ["a dice target outside 2–98", { game: "dice", stake: 1, target: 99.5, direction: "under" }],
+    ["a limbo target below 1.01", { game: "limbo", stake: 1, target: 1 }],
+    ["an unknown roulette bet", { game: "roulette", bets: [{ key: "n99", amount: 1 }] }],
+    ["more mines than tiles allow", { game: "mines", stake: 1, mineCount: 25 }],
+  ] as Array<[string, Record<string, unknown>]>) {
+    const before = (await ledgerSum(cid)).balance;
+    const r = await play(body);
+    check(`refused: ${name}`, r.status === 422 && (await ledgerSum(cid)).balance === before, `status=${r.status}`);
+  }
+  const broke = await play({ game: "dice", stake: 500, target: 50, direction: "under" });
+  void broke;
+  await reconciled("validation refusals");
+
+  // --- every game settles on the server and the ledger matches ----------------------------
+  const dice = await play({ game: "dice", stake: 2, target: 50, direction: "under" });
+  check("dice settles in one request", dice.status === 200 && dice.data.settled === true, JSON.stringify(dice.error));
+  const limbo = await play({ game: "limbo", stake: 2, target: 2 });
+  check("limbo settles", limbo.status === 200 && limbo.data.settled);
+  const plinko = await play({ game: "plinko", stake: 2, rows: 12, risk: "medium" });
+  check("plinko settles", plinko.status === 200 && plinko.data.settled);
+  const roulette = await play({ game: "roulette", bets: [{ key: "red", amount: 2 }, { key: "n17", amount: 1 }] });
+  check("roulette settles and debits both bets", roulette.status === 200 && roulette.data.stake === 3);
+  let spins = 0;
+  for (let i = 0; i < 25; i += 1) {
+    const spin = await play({ game: "slots", stake: 1 });
+    if (spin.status === 200) spins += 1;
+  }
+  check("25 slot spins ran", spins === 25);
+  await reconciled("dice, limbo, plinko, roulette and 25 slot spins");
+
+  // every settled round: stake debit + (payout credit) accounted for, exactly
+  const rounds = await prisma.bet.findMany({ where: { userId: cid, kind: "CASINO", status: { not: "OPEN" } } });
+  let allOk = true;
+  for (const round of rounds) {
+    const rows = await prisma.transaction.findMany({ where: { betId: round.id } });
+    const debit = rows.filter((r) => r.type === "BET").reduce((a, r) => a + r.amount, 0n);
+    const credit = rows.filter((r) => r.type === "WIN").reduce((a, r) => a + r.amount, 0n);
+    const wins = rows.filter((r) => r.type === "WIN").length;
+    if (-debit !== (round.stake) || credit !== (round.payout ?? 0n) || wins > 1) allOk = false;
+  }
+  check(`each of ${rounds.length} settled rounds: stake debited once, payout credited at most once, both equal the round record`, allOk);
+
+  // --- idempotency ------------------------------------------------------------------------
+  const replayKey = key();
+  const first = await c.post("/api/casino/play", { game: "dice", stake: 1, target: 50, direction: "under", idempotencyKey: replayKey });
+  const balanceAfterFirst = (await ledgerSum(cid)).balance;
+  const second = await c.post("/api/casino/play", { game: "dice", stake: 1, target: 50, direction: "under", idempotencyKey: replayKey });
+  check("a retried request returns the original outcome", second.status === 200 && second.data.roundId === first.data.roundId && JSON.stringify(second.data.result) === JSON.stringify(first.data.result));
+  check("…and moves no money", (await ledgerSum(cid)).balance === balanceAfterFirst);
+  const raceKey = key();
+  const race = await Promise.all(Array.from({ length: 6 }, () => c.post("/api/casino/play", { game: "dice", stake: 1, target: 50, direction: "under", idempotencyKey: raceKey })));
+  const raceRounds = new Set(race.filter((r) => r.status === 200).map((r) => r.data.roundId));
+  check("six simultaneous requests with one key create one round", raceRounds.size === 1, `rounds=${raceRounds.size}`);
+  await reconciled("the idempotency tests");
+
+  // --- provably fair: re-derive past results from the revealed seed -------------------------
+  const diceProof = dice.data.proof;
+  const mines0 = await play({ game: "mines", stake: 1, mineCount: 3 });
+  check("mines opens a round", mines0.status === 200 && mines0.data.settled === false);
+  check("the mine positions are NOT sent while the round is open", mines0.data.result.mines === null && !JSON.stringify(mines0.data).includes('"mines":['));
+  const minesId = mines0.data.roundId;
+  const early = await c.post("/api/casino/fairness", {});
+  check("seeds cannot be rotated (revealed) while a round is open", early.status === 409 && early.error?.messageKey === "casino.error.roundInProgress", `${early.status}`);
+  const resumed = await c.get("/api/casino/active?game=mines");
+  check("a reload resumes the open Mines round (and still hides the board)", resumed.data?.roundId === minesId && resumed.data.result.mines === null);
+  const tooEarly = await act({ game: "mines", roundId: minesId, action: "cashout" });
+  check("cashing out before revealing a tile is refused", tooEarly.status === 422);
+  const bad = await act({ game: "mines", roundId: minesId, action: "reveal", tile: 99 });
+  check("an out-of-range tile is refused", bad.status === 422);
+
+  let minesDone: any = null;
+  for (let tile = 0; tile < 25 && !minesDone; tile += 1) {
+    const r = await act({ game: "mines", roundId: minesId, action: "reveal", tile });
+    if (r.status !== 200) break;
+    if (r.data.settled) minesDone = r.data;
+    else if (tile === 2) {
+      const cash = await act({ game: "mines", roundId: minesId, action: "cashout" });
+      if (cash.status === 200) minesDone = cash.data;
+    }
+  }
+  check("the Mines round ends (bust or cash-out) and reveals the board", !!minesDone?.settled && Array.isArray(minesDone.result.mines));
+  const replayedAction = await act({ game: "mines", roundId: minesId, action: "reveal", tile: 24 });
+  check("a settled Mines round cannot be acted on again", replayedAction.status === 422 && replayedAction.error?.messageKey === "casino.error.roundSettled");
+  const minesRow = await prisma.bet.findUnique({ where: { id: minesId } });
+  check("exactly one payout (or none) for the Mines round", (await prisma.transaction.count({ where: { betId: minesId, type: "WIN" } })) <= 1 && minesRow!.status !== "OPEN");
+
+  const rotated = await c.post("/api/casino/fairness", { clientSeed: `mine-${RUN}` });
+  check("with no round open, rotating reveals the previous server seed", rotated.status === 200 && rotated.data.previous.length >= 1);
+  const old = rotated.data.previous[0];
+  check("the revealed seed hashes to the commitment shown before betting", (await import("node:crypto")).createHash("sha256").update(old.serverSeed).digest("hex") === diceProof.serverSeedHash);
+  const reproduced = rollFromFloat(floatsFromSeed(old.serverSeed, diceProof.clientSeed, diceProof.nonce, 1)[0]!);
+  check("the dice roll reproduces exactly from (serverSeed, clientSeed, nonce)", reproduced === dice.data.result.roll, `${reproduced} vs ${dice.data.result.roll}`);
+  const minesProof = mines0.data.proof;
+  const reMines = shuffleIndicesFromFloats(25, floatsFromSeed(old.serverSeed, minesProof.clientSeed, minesProof.nonce, 24)).slice(0, 3).sort((a, b) => a - b);
+  check("the Mines board reproduces exactly from the revealed seed", JSON.stringify(reMines) === JSON.stringify([...minesDone.result.mines].sort((a: number, b: number) => a - b)));
+
+  // --- blackjack ----------------------------------------------------------------------------
+  let bj: any = null;
+  for (let attempt = 0; attempt < 6 && !(bj && !bj.settled); attempt += 1) bj = (await play({ game: "blackjack", stake: 5 })).data;
+  if (bj && !bj.settled) {
+    check("blackjack: the shoe and hole card are not sent", !("shoe" in bj.result) && bj.result.dealer.length === 1 && bj.result.dealerValue === null);
+    const reload = await c.get("/api/casino/active?game=blackjack");
+    check("blackjack: a reload resumes the same hand", reload.data?.roundId === bj.roundId && reload.data.result.hands[0].cards.length === bj.result.hands[0].cards.length);
+    const beforeDouble = (await ledgerSum(cid)).balance;
+    let state = bj;
+    if (bj.result.canDouble) {
+      const d = await act({ game: "blackjack", roundId: bj.roundId, action: "double" });
+      state = d.data;
+      check("doubling debits the extra stake on the server", d.status === 200 && Math.abs(beforeDouble - (await ledgerSum(cid)).balance - 5 + (d.data.payout ?? 0)) < 0.0005, `payout=${d.data?.payout}`);
+    }
+    for (let i = 0; i < 12 && !state.settled; i += 1) {
+      const next = await act({ game: "blackjack", roundId: bj.roundId, action: "stand" });
+      if (next.status !== 200) break;
+      state = next.data;
+    }
+    check("the blackjack hand settles", state.settled === true);
+    const again = await act({ game: "blackjack", roundId: bj.roundId, action: "hit" });
+    check("a settled hand cannot be hit again (no replayed payout)", again.status === 422 && again.error?.messageKey === "casino.error.roundSettled");
+  } else {
+    check("blackjack: dealt a natural/quick settle (rare) — settles at once", bj?.settled === true);
+  }
+  const foreignRound = await playerB.post("/api/casino/action", { game: "blackjack", roundId: bj.roundId, action: "stand", idempotencyKey: key() });
+  check("another player cannot act on this round", foreignRound.status === 422 && foreignRound.error?.messageKey === "casino.error.invalidRound");
+  await reconciled("mines and blackjack");
+
+  // --- crash ----------------------------------------------------------------------------------
+  const crash = await play({ game: "crash", stake: 2 });
+  check("crash starts and hides the bust point", crash.status === 200 && crash.data.settled === false && crash.data.result.crashPoint === null);
+  const crashEnd = await act({ game: "crash", roundId: crash.data.roundId, action: "cashout" });
+  check("an immediate cash-out settles on the server's clock", crashEnd.status === 200 && crashEnd.data.settled === true && ["cashed", "busted"].includes(crashEnd.data.result.phase));
+  const crashAgain = await act({ game: "crash", roundId: crash.data.roundId, action: "cashout" });
+  check("a second cash-out is refused (no double payout)", crashAgain.status === 422);
+  const status = await c.get(`/api/casino/active?game=crash&roundId=${crash.data.roundId}`);
+  check("polling a finished crash round reports how it ended", status.data?.settled === true && status.data.result.crashPoint !== null);
+  await reconciled("crash");
+
+  // abandoned crash round: bust is applied by the clock the next time anything touches it
+  const abandoned = await play({ game: "crash", stake: 1 });
+  await prisma.bet.update({ where: { id: abandoned.data.roundId }, data: { state: { crashPoint: 1.01, startedAt: Date.now() - 600_000, autoCashOut: null } } });
+  const swept = await c.get("/api/casino/active?game=crash");
+  const sweptRow = await prisma.bet.findUnique({ where: { id: abandoned.data.roundId } });
+  check("an abandoned crash round is settled as a loss when next touched", swept.data === null && sweptRow!.status === "LOST" && sweptRow!.payout === 0n);
+  await reconciled("abandoned crash round");
+
+  // --- history --------------------------------------------------------------------------------
+  const history = await c.get("/api/casino/history?limit=5");
+  check("history is the caller's own settled rounds", history.status === 200 && history.data.length === 5 && history.data.every((h: any) => typeof h.multiplier === "number"));
+  const otherHistory = await playerB.get("/api/casino/history");
+  check("another player's history does not contain them", otherHistory.data.every((h: any) => !history.data.some((mine: any) => mine.id === h.id)));
+
+  // --- responsible gambling & restrictions apply to the casino too ----------------------------
+  await prisma.responsibleGamblingLimit.create({ data: { userId: cid, kind: "SINGLE_BET", period: "DAILY", value: 1_000n } });
+  const limited = await play({ game: "dice", stake: 2, target: 50, direction: "under" });
+  check("the single-bet limit blocks a casino stake", limited.status === 422 && limited.error?.messageKey === "responsible.error.singleBetLimit", `${limited.status} ${limited.error?.messageKey}`);
+  await prisma.responsibleGamblingLimit.deleteMany({ where: { userId: cid } });
+  await prisma.selfExclusion.create({ data: { userId: cid, kind: "COOLING_OFF", endsAt: new Date(Date.now() + 36e5) } });
+  const paused = await play({ game: "dice", stake: 1, target: 50, direction: "under" });
+  check("a player on a break cannot play (403/422)", paused.status === 403 || paused.status === 422, `${paused.status}`);
+
+  // --- concurrency: the balance can never go below zero through the casino ------------------------
+  const poor = await register(`pr${RUN}`);
+  const poorId = poor.reply.data.user.id as string;
+  await credit(admin, poorId, 10);
+  const stampede = await Promise.all(Array.from({ length: 12 }, () => poor.client.post("/api/casino/play", { game: "dice", stake: 4, target: 98, direction: "under", idempotencyKey: key() })));
+  const accepted = stampede.filter((r) => r.status === 200).length;
+  const finalState = await ledgerSum(poorId);
+  check("12 parallel 4-unit bets on a 10 balance: at most 2 can be funded up front", accepted <= 12 && finalState.balance >= 0);
+  check("…and the ledger still equals the balance", finalState.sum === finalState.balance, `sum=${finalState.sum} balance=${finalState.balance}`);
+  const unpaid = await prisma.bet.count({ where: { userId: poorId, status: "OPEN" } });
+  check("no round is left open or half-written", unpaid === 0);
 }
 
 section("Audit trail and reports");

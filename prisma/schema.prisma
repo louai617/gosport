@@ -390,6 +390,9 @@ model Bet {
   placedAt       DateTime  @default(now())
   settledAt      DateTime?
   settledById    String?
+  /// Bumped by every state change, so two concurrent requests on one round
+  /// cannot both apply: the loser's conditional update matches no row.
+  version        Int       @default(0)
   /// Server-private game state. Never sent to a client.
   state          Json?
   /// Public, player-visible outcome summary.
@@ -449,6 +452,17 @@ model FairnessSeed {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, active])
+}
+
+/// Free spins won on the slot, owed to the player. Server state because it is
+/// worth money: a counter the browser could edit would be unlimited free spins.
+model SlotFreeSpins {
+  userId    String   @id
+  remaining Int      @default(0)
+  /// Millimes — the stake the spins were won at, so they cannot be banked at a
+  /// low stake and cashed at a high one.
+  stake     BigInt   @default(0)
+  updatedAt DateTime @updatedAt
 }
 
 /// Replay cache for money-moving requests: the same key returns the original

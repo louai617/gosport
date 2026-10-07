@@ -142,6 +142,7 @@ CREATE TABLE "Bet" (
     "placedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "settledAt" DATETIME,
     "settledById" TEXT,
+    "version" INTEGER NOT NULL DEFAULT 0,
     "state" JSONB,
     "result" JSONB,
     CONSTRAINT "Bet_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
@@ -179,6 +180,14 @@ CREATE TABLE "FairnessSeed" (
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "revealedAt" DATETIME,
     CONSTRAINT "FairnessSeed_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- CreateTable
+CREATE TABLE "SlotFreeSpins" (
+    "userId" TEXT NOT NULL PRIMARY KEY,
+    "remaining" INTEGER NOT NULL DEFAULT 0,
+    "stake" BIGINT NOT NULL DEFAULT 0,
+    "updatedAt" DATETIME NOT NULL
 );
 
 -- CreateTable

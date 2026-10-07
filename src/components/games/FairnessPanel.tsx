@@ -4,9 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Check, Copy, RefreshCw, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { useCasinoReady } from "./useCasinoReady";
+import { useFairness } from "./useFairness";
 import { useT } from "@/i18n/I18nProvider";
-import { useGameStore } from "@/store/gameStore";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -14,31 +13,24 @@ import { Skeleton } from "@/components/ui/Skeleton";
 /**
  * The commitment the player holds.
  *
- * Shows the current server-seed hash (the commitment), their editable client
- * seed and the nonce, plus the previous pair's revealed seed once rotated.
+ * Shows the SHA-256 of the live server seed (the commitment), the player's
+ * editable client seed and the round counter, plus the *revealed* server seed of
+ * the last retired pair so past rounds can be re-derived.
  *
- * The warning at the bottom is not boilerplate: in this build the seed is
- * generated in the browser, so the scheme's arithmetic is real but its
- * guarantee is not. Presenting the badge without that caveat would be the
- * exact misrepresentation the badge is supposed to prevent.
+ * The server draws every round from this pair. It committed to the seed before
+ * the bet, so it cannot pick an outcome after seeing it — that is the property
+ * "provably fair" means here, and it is checkable by the player, not asserted.
  */
 export function FairnessPanel() {
   const t = useT();
-  const ready = useCasinoReady();
-
-  const serverSeedHash = useGameStore((state) => state.serverSeedHash);
-  const clientSeed = useGameStore((state) => state.clientSeed);
-  const nonce = useGameStore((state) => state.nonce);
-  const previousPair = useGameStore((state) => state.previousPair);
-  const rotateSeeds = useGameStore((state) => state.rotateSeeds);
+  const { state, rotate, rotating, error, signedIn, ready } = useFairness();
 
   const [draft, setDraft] = useState("");
-  const [rotating, setRotating] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
 
   useEffect(() => {
-    if (clientSeed && !draft) setDraft(clientSeed);
-  }, [clientSeed, draft]);
+    if (state?.clientSeed && !draft) setDraft(state.clientSeed);
+  }, [state?.clientSeed, draft]);
 
   const copy = async (label: string, value: string) => {
     try {
@@ -51,13 +43,21 @@ export function FairnessPanel() {
     }
   };
 
-  const rotate = async () => {
-    setRotating(true);
-    await rotateSeeds(draft);
-    setRotating(false);
-  };
+  if (ready && !signedIn) {
+    return (
+      <section className="rounded-xl border border-line bg-surface p-4">
+        <h2 className="flex items-center gap-2 text-caption uppercase text-ink-subtle">
+          <ShieldCheck size={13} aria-hidden="true" className="text-success" />
+          {t("games.provablyFair.title")}
+        </h2>
+        <p className="mt-2 text-caption normal-case leading-relaxed tracking-normal text-ink-muted">
+          {t("games.fair.signIn")}
+        </p>
+      </section>
+    );
+  }
 
-  if (!ready) {
+  if (!state) {
     return (
       <section className="rounded-xl border border-line bg-surface p-4">
         <Skeleton className="h-4 w-32" rounded="sm" />
@@ -66,6 +66,8 @@ export function FairnessPanel() {
       </section>
     );
   }
+
+  const previous = state.previous[0];
 
   return (
     <section className="rounded-xl border border-line bg-surface p-4">
@@ -77,10 +79,10 @@ export function FairnessPanel() {
       <div className="mt-3 space-y-3">
         <SeedField
           label={t("games.fair.serverSeedHash")}
-          value={serverSeedHash}
+          value={state.serverSeedHash}
           hint={t("games.fair.serverSeedHashHint")}
           copied={copied === "hash"}
-          onCopy={() => copy("hash", serverSeedHash)}
+          onCopy={() => copy("hash", state.serverSeedHash)}
           copyLabel={t("ui.copy")}
         />
 
@@ -94,44 +96,46 @@ export function FairnessPanel() {
           <input
             id="client-seed"
             value={draft}
-            onChange={(event) => setDraft(event.target.value.slice(0, 64))}
+            onChange={(event) => setDraft(event.target.value.replace(/[^\w.-]/g, "").slice(0, 64))}
             className="numeric h-9 w-full rounded-md border border-line bg-surface-2 px-2.5 text-caption normal-case tracking-normal text-ink transition-colors duration-fast hover:border-line-strong focus:border-primary"
           />
         </div>
 
         <div className="flex items-baseline justify-between gap-2">
-          <span className="text-caption uppercase text-ink-subtle">
-            {t("games.fair.nonce")}
-          </span>
-          <span className="numeric text-small font-semibold text-ink">{nonce}</span>
+          <span className="text-caption uppercase text-ink-subtle">{t("games.fair.nonce")}</span>
+          <span className="numeric text-small font-semibold text-ink">{state.nonce}</span>
         </div>
+
+        {error ? (
+          <p role="alert" className="text-caption normal-case tracking-normal text-danger">
+            {t(error)}
+          </p>
+        ) : null}
 
         <Button
           variant="secondary"
           size="sm"
           fullWidth
           loading={rotating}
-          onClick={rotate}
+          onClick={() => rotate(draft || undefined)}
           iconStart={<RefreshCw size={14} />}
         >
           {t("games.fair.rotate")}
         </Button>
       </div>
 
-      {previousPair ? (
+      {previous ? (
         <div className="mt-4 space-y-3 border-t border-line-soft pt-3">
-          <p className="text-caption uppercase text-ink-subtle">
-            {t("games.fair.revealed")}
-          </p>
+          <p className="text-caption uppercase text-ink-subtle">{t("games.fair.revealed")}</p>
           <SeedField
             label={t("games.fair.serverSeed")}
-            value={previousPair.serverSeed}
+            value={previous.serverSeed}
             copied={copied === "revealed"}
-            onCopy={() => copy("revealed", previousPair.serverSeed)}
+            onCopy={() => copy("revealed", previous.serverSeed)}
             copyLabel={t("ui.copy")}
           />
           <p className="text-caption normal-case leading-relaxed tracking-normal text-ink-subtle">
-            {t("games.fair.revealedHint", { count: previousPair.nonce })}
+            {t("games.fair.revealedHint", { count: previous.rounds })}
           </p>
           <Link
             href="/games/fairness"
@@ -142,9 +146,9 @@ export function FairnessPanel() {
         </div>
       ) : null}
 
-      <Alert tone="warning" className="mt-4">
+      <Alert tone="info" className="mt-4">
         <span className="text-caption normal-case leading-relaxed tracking-normal">
-          {t("games.fair.demoCaveat")}
+          {t("games.fair.caveat")}
         </span>
       </Alert>
     </section>

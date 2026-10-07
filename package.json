@@ -2,7 +2,7 @@
   "name": "sportgo",
   "version": "0.1.0",
   "private": true,
-  "description": "SportGo — sports betting & sports entertainment platform (DEMO / SIMULATION MODE)",
+  "description": "SportGo \u2014 sports betting & sports entertainment platform (DEMO / SIMULATION MODE)",
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "node scripts/prisma-provider.mjs && prisma generate && next build",
@@ -24,9 +24,8 @@
     "smoke": "bash scripts/smoke.sh",
     "check:boundary": "node scripts/check-client-boundary.mjs",
     "slot:rtp": "node --experimental-strip-types scripts/slot-rtp.ts",
-    "test:unit": "tsx scripts/settlement-test.ts && tsx scripts/period-test.ts && tsx scripts/csv-test.ts",
-    "test:integration": "tsx --conditions=react-server scripts/integration-test.mts",
-    "casino:test": "node scripts/casino-test.mjs"
+    "test:unit": "tsx scripts/settlement-test.ts && tsx scripts/period-test.ts && tsx scripts/csv-test.ts && tsx --conditions=react-server scripts/fairness-test.mts",
+    "test:integration": "tsx --conditions=react-server scripts/integration-test.mts"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.2.2",

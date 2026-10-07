@@ -290,7 +290,6 @@ export function SlotsBoard() {
         onStakeChange={setStake}
         onBet={spin}
         busy={spinning || !ready}
-        serverBalance={balance}
         betLabel={isFreeSpin ? t("games.slots.freeSpin") : t("games.slots.spin")}
         summary={[
           {

@@ -4,37 +4,38 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 import { formatAmount } from "@/lib/format";
 import { floorTo2, round2 } from "@/lib/games/constants";
-import { multiplierFromFloat } from "@/lib/games/limbo";
+import { multiplierAt } from "@/lib/games/crash";
 import { useI18n } from "@/i18n/I18nProvider";
-import { useGameStore } from "@/store/gameStore";
+import type { CrashView } from "@/types/casino";
+import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Checkbox";
+import { useWallet } from "@/components/wallet/WalletProvider";
 import { StakePanel } from "./StakePanel";
-import { useGameRound, type BeginResult } from "./useGameRound";
 
 /**
  * Crash.
  *
- * Same distribution as Limbo — the bust point is drawn once, up front, from
- * the committed seed. The rising curve is presentation: nothing about it can
- * change where the round ends, which is what makes the result verifiable.
+ * The bust point is drawn on the server, from the player's committed seed, when
+ * the round starts — and it is never sent to the browser while the round is
+ * running. This board animates the curve from the server's start time and asks
+ * the server what happened:
  *
- * `m(t) = e^{rate·t}` because a linear climb makes every round feel identical;
- * exponential growth means the decision to hold gets harder the longer it
- * runs, which is the shape of the game.
+ *  - **Cash out** posts to the server, which evaluates the curve at *its own*
+ *    clock. If the curve had already passed the bust point by the time the
+ *    request landed, the round is a loss — that is the game.
+ *  - While running, the board polls the server (every ~600 ms) so it learns the
+ *    moment the round ends — a bust, or an auto cash-out the server honoured.
+ *
+ * Nothing the browser says about time or multipliers is believed.
  */
-const GROWTH_RATE = 0.18;
+const POLL_MS = 600;
 
 type Phase = "idle" | "running" | "busted" | "cashed";
 
-function multiplierAt(elapsedMs: number): number {
-  return floorTo2(Math.exp(GROWTH_RATE * (elapsedMs / 1000)));
-}
-
 export function CrashBoard() {
   const { t, locale } = useI18n();
-  const { begin, draw, settle } = useGameRound();
-  const setBusy = useGameStore((state) => state.setBusy);
+  const { play, act, resume, ready, signedIn } = useWallet();
 
   const [stake, setStake] = useState(1);
   const [autoEnabled, setAutoEnabled] = useState(false);
@@ -42,114 +43,114 @@ export function CrashBoard() {
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [current, setCurrent] = useState(1);
-  const [bustPoint, setBustPoint] = useState<number | null>(null);
-  const [cashedAt, setCashedAt] = useState<number | null>(null);
+  const [final, setFinal] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Refs, not state: the animation frame reads these every ~16ms and a stale
-  // closure here would keep the round running past its bust point.
-  const frameRef = useRef<number | null>(null);
-  const startedRef = useRef(0);
-  const bustRef = useRef(0);
-  const roundRef = useRef<BeginResult | null>(null);
-  const stakeRef = useRef(stake);
-  const autoRef = useRef<number | null>(null);
-  const settledRef = useRef(false);
+  const roundId = useRef<string | null>(null);
+  /** performance.now() corresponding to the curve's t = 0, corrected for clock skew. */
+  const originRef = useRef(0);
+  const frame = useRef<number | null>(null);
+  const poller = useRef<number | null>(null);
+  const ended = useRef(false);
 
-  const stop = useCallback(() => {
-    if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
-    frameRef.current = null;
+  const stopTimers = useCallback(() => {
+    if (frame.current !== null) cancelAnimationFrame(frame.current);
+    if (poller.current !== null) window.clearInterval(poller.current);
+    frame.current = null;
+    poller.current = null;
   }, []);
 
-  // A round left running while the component unmounts would keep an rAF loop
-  // alive and settle into a store the user has navigated away from.
-  useEffect(() => stop, [stop]);
+  useEffect(() => stopTimers, [stopTimers]);
 
-  const finish = useCallback(
-    (multiplier: number, outcome: "won" | "lost") => {
-      if (settledRef.current) return;
-      settledRef.current = true;
-      stop();
-
-      const round = roundRef.current;
-      if (!round) return;
-
-      settle({
-        gameKey: "crash",
-        stake: stakeRef.current,
-        multiplier: outcome === "won" ? multiplier : 0,
-        result: bustRef.current,
-        outcome: outcome === "won" ? "cashed_out" : "lost",
-        round,
-      });
-      setBusy(false);
+  const conclude = useCallback(
+    (view: CrashView) => {
+      if (ended.current) return;
+      ended.current = true;
+      stopTimers();
+      if (view.phase === "busted") {
+        setCurrent(view.crashPoint ?? 1);
+        setFinal(view.crashPoint);
+        setPhase("busted");
+      } else {
+        setCurrent(view.multiplier ?? 1);
+        setFinal(view.multiplier);
+        setPhase("cashed");
+      }
     },
-    [settle, setBusy, stop],
+    [stopTimers],
   );
 
-  const cashOut = useCallback(() => {
-    if (phase !== "running" || settledRef.current) return;
-    const now = multiplierAt(performance.now() - startedRef.current);
-    const capped = Math.min(now, bustRef.current);
+  const begin = useCallback(
+    (view: CrashView, id: string) => {
+      ended.current = false;
+      roundId.current = id;
+      setError(null);
+      setFinal(null);
+      // Align the local clock to the server's: it says how far into the curve it is *now*.
+      originRef.current = performance.now() - (view.serverNow - view.startedAt);
+      setPhase("running");
 
-    setCashedAt(capped);
-    setCurrent(capped);
-    setPhase("cashed");
-    finish(capped, "won");
-  }, [phase, finish]);
+      const tick = () => {
+        if (ended.current) return;
+        setCurrent(multiplierAt(performance.now() - originRef.current));
+        frame.current = requestAnimationFrame(tick);
+      };
+      frame.current = requestAnimationFrame(tick);
 
-  const tick = useCallback(() => {
-    const elapsed = performance.now() - startedRef.current;
-    const value = multiplierAt(elapsed);
+      poller.current = window.setInterval(async () => {
+        const status = await resume<CrashView>("crash", id);
+        if (status?.settled) conclude(status.result);
+      }, POLL_MS);
+    },
+    [resume, conclude],
+  );
 
-    if (value >= bustRef.current) {
-      setCurrent(bustRef.current);
-      setPhase("busted");
-      finish(0, "lost");
-      return;
-    }
+  // A reload mid-round resumes it; the stake is not stranded.
+  useEffect(() => {
+    if (!ready || !signedIn) return;
+    let cancelled = false;
+    void resume<CrashView>("crash").then((open) => {
+      if (!cancelled && open && !open.settled) begin(open.result, open.roundId);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, signedIn, resume, begin]);
 
-    // Auto cash-out is evaluated before the next paint, so it cannot be beaten
-    // to the punch by a bust in the same frame.
-    const auto = autoRef.current;
-    if (auto !== null && value >= auto) {
-      const capped = Math.min(auto, bustRef.current);
-      setCashedAt(capped);
-      setCurrent(capped);
-      setPhase("cashed");
-      finish(capped, "won");
-      return;
-    }
-
-    setCurrent(value);
-    frameRef.current = requestAnimationFrame(tick);
-  }, [finish]);
-
-  const play = async () => {
-    if (phase === "running") return;
-
-    const round = begin(stake);
-    if (!round) return;
-
+  const start = async () => {
+    if (phase === "running" || busy) return;
     setBusy(true);
-    const [value] = await draw(round, 1);
-    const point = multiplierFromFloat(value ?? 0);
+    setError(null);
+    const response = await play<CrashView>("crash", {
+      stake,
+      ...(autoEnabled ? { autoCashOut: autoTarget } : {}),
+    });
+    setBusy(false);
 
-    roundRef.current = round;
-    stakeRef.current = stake;
-    bustRef.current = point;
-    autoRef.current = autoEnabled ? autoTarget : null;
-    settledRef.current = false;
-    startedRef.current = performance.now();
-
-    setBustPoint(point);
-    setCashedAt(null);
+    if (!response.ok || !response.result || !response.roundId) {
+      setError(response.errorKey ?? "error.generic");
+      return;
+    }
     setCurrent(1);
-    setPhase("running");
-    frameRef.current = requestAnimationFrame(tick);
+    begin(response.result, response.roundId);
+  };
+
+  const cashOut = async () => {
+    if (phase !== "running" || !roundId.current || ended.current) return;
+    setBusy(true);
+    const response = await act<CrashView>("crash", roundId.current, "cashout");
+    setBusy(false);
+
+    if (!response.ok || !response.result) {
+      setError(response.errorKey ?? "error.generic");
+      return;
+    }
+    conclude(response.result);
   };
 
   const running = phase === "running";
-  const shown = running ? current : (cashedAt ?? bustPoint ?? current);
+  const shown = running ? current : (final ?? current);
 
   return (
     <>
@@ -163,16 +164,16 @@ export function CrashBoard() {
               : "border-line bg-surface",
         )}
       >
-        {/* The curve is drawn as a growing bar rather than a plotted line: it
-            reads at a glance on a phone and needs no canvas. */}
         <div
           aria-hidden="true"
           className="pointer-events-none absolute inset-x-0 bottom-0 origin-bottom bg-gradient-to-t from-primary/25 to-transparent transition-[height] duration-100"
-          style={{ height: `${Math.min(100, (Math.log(shown) / Math.log(20)) * 100)}%` }}
+          style={{ height: `${Math.min(100, (Math.log(Math.max(shown, 1)) / Math.log(20)) * 100)}%` }}
         />
 
         <div className="relative text-center">
-          {phase === "idle" ? (
+          {error ? (
+            <Alert tone="danger">{t(error)}</Alert>
+          ) : phase === "idle" ? (
             <p className="text-small text-ink-subtle">{t("games.crash.prompt")}</p>
           ) : (
             <>
@@ -187,14 +188,14 @@ export function CrashBoard() {
                   running && "text-ink",
                 )}
               >
-                {shown.toFixed(2)}×
+                {floorTo2(shown).toFixed(2)}×
               </p>
 
               <p className="mt-3 text-small text-ink-muted">
                 {phase === "busted"
                   ? t("games.crash.busted")
                   : phase === "cashed"
-                    ? t("games.crash.cashedAt", { multiplier: shown.toFixed(2) })
+                    ? t("games.crash.cashedAt", { multiplier: floorTo2(shown).toFixed(2) })
                     : t("games.crash.rising")}
               </p>
             </>
@@ -205,12 +206,13 @@ export function CrashBoard() {
       <StakePanel
         stake={stake}
         onStakeChange={setStake}
-        onBet={play}
+        onBet={start}
+        busy={busy}
         disabled={running}
         betLabel={t("games.crash.play")}
         action={
           running ? (
-            <Button fullWidth size="lg" variant="success" onClick={cashOut}>
+            <Button fullWidth size="lg" variant="success" loading={busy} onClick={cashOut}>
               {t("games.crash.cashOut", {
                 amount: formatAmount(round2(stake * current), locale),
               })}
@@ -220,7 +222,7 @@ export function CrashBoard() {
         summary={[
           {
             label: t("games.payout"),
-            value: formatAmount(round2(stake * (running ? current : autoTarget)), locale),
+            value: formatAmount(round2(stake * (running ? current : autoEnabled ? autoTarget : 1)), locale),
             emphasis: true,
           },
         ]}
@@ -228,13 +230,14 @@ export function CrashBoard() {
         <div className="space-y-2.5">
           <Checkbox
             checked={autoEnabled}
+            disabled={running}
             onChange={(event) => setAutoEnabled(event.target.checked)}
             label={t("games.crash.autoCashOut")}
           />
 
           <input
             inputMode="decimal"
-            disabled={!autoEnabled}
+            disabled={!autoEnabled || running}
             value={autoTarget}
             onChange={(event) => {
               const parsed = Number.parseFloat(event.target.value);

@@ -5,10 +5,11 @@ import { GAME_STAKE, round2 } from "@/lib/games/constants";
 import { cn } from "@/lib/cn";
 import { formatAmount } from "@/lib/format";
 import { useHydrated } from "@/lib/useHydrated";
-import { useCasinoReady } from "./useCasinoReady";
 import { useI18n } from "@/i18n/I18nProvider";
-import { useGameStore } from "@/store/gameStore";
-import { Button } from "@/components/ui/Button";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useWallet } from "@/components/wallet/WalletProvider";
+import { Button, buttonStyles } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Skeleton";
 
 export interface StakePanelProps {
@@ -24,11 +25,6 @@ export interface StakePanelProps {
   busy?: boolean;
   /** Replaces the bet button entirely — Crash swaps in "Cash out". */
   action?: React.ReactNode;
-  /**
-   * Server-returned balance. Supplied by games settled on the server, so the
-   * panel shows the ledger's figure rather than the local session store.
-   */
-  serverBalance?: number | null;
 }
 
 const MULTIPLIERS = [0.5, 2] as const;
@@ -43,13 +39,13 @@ export function StakePanel({
   disabled = false,
   busy = false,
   action,
-  serverBalance,
 }: StakePanelProps) {
   const { t, locale } = useI18n();
   const hydrated = useHydrated();
-  const ready = useCasinoReady();
-  const localBalance = useGameStore((state) => state.balance);
-  const balance = serverBalance ?? localBalance;
+  const pathname = usePathname();
+  // The one balance: whatever the server last returned. Nothing local.
+  const { balance: ledgerBalance, ready, signedIn } = useWallet();
+  const balance = ledgerBalance ?? 0;
 
   const clamp = (value: number) =>
     round2(Math.min(GAME_STAKE.max, Math.max(0, value)));
@@ -59,7 +55,7 @@ export function StakePanel({
     onStakeChange(Number.isNaN(parsed) ? 0 : clamp(parsed));
   };
 
-  const tooHigh = hydrated && stake > balance;
+  const tooHigh = hydrated && signedIn && stake > balance;
   const tooLow = stake > 0 && stake < GAME_STAKE.min;
 
   return (
@@ -68,11 +64,13 @@ export function StakePanel({
         <h2 className="text-caption uppercase text-ink-subtle">
           {t("games.sessionBalance")}
         </h2>
-        {hydrated ? (
+        {hydrated && ready ? (signedIn ? (
           <p className="numeric text-h3 font-bold text-ink">
             {formatAmount(balance, locale)}
           </p>
         ) : (
+          <p className="text-small text-ink-subtle">{t("games.signInToPlay")}</p>
+        )) : (
           <Skeleton className="h-5 w-20" rounded="sm" />
         )}
       </div>
@@ -161,7 +159,15 @@ export function StakePanel({
       ) : null}
 
       <div className="mt-4">
-        {action ?? (
+        {ready && !signedIn ? (
+          <Link
+            href={`/login?next=${encodeURIComponent(pathname)}`}
+            className={buttonStyles({ size: "lg", fullWidth: true })}
+          >
+            {t("games.signInToPlay")}
+          </Link>
+        ) : (
+          action ?? (
           <Button
             fullWidth
             size="lg"
@@ -173,7 +179,7 @@ export function StakePanel({
           >
             {betLabel}
           </Button>
-        )}
+        ))}
       </div>
     </section>
   );

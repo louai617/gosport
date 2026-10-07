@@ -1,40 +1,38 @@
 import { z } from "zod";
 import { fail, ok, withRoute } from "@/server/api";
-import { actBlackjack, type BetContext } from "@/server/casino/service";
-import { resolveCasinoSession, sessionCookie } from "@/server/casino/session";
+import { actBlackjack, actCrash, actMines } from "@/server/casino/service";
 
 /**
  * POST /api/casino/action
  *
- * Player decisions on an open blackjack hand. The round id is validated
- * against the caller's own session and refused once settled, which is what
- * stops a finished hand being replayed for a second payout.
+ * Player decisions on an open round: blackjack hit / stand / double / split,
+ * mines reveal / cashout, crash cashout. The round id is looked up *scoped to
+ * the caller* (another player's round is indistinguishable from a missing one)
+ * and refused once settled, which is what stops a finished round being replayed
+ * for a second payout. State changes are optimistically versioned, so two
+ * concurrent actions on one round cannot both apply.
  */
 const bodySchema = z.object({
+  game: z.enum(["blackjack", "mines", "crash"]),
   roundId: z.string().min(8).max(64),
-  action: z.enum(["hit", "stand", "double", "split"]),
+  action: z.string().min(1).max(16),
+  tile: z.unknown().optional(),
   idempotencyKey: z.string().min(8).max(128),
 });
 
 export const POST = withRoute(
-  async ({ input }) => {
-    const session = await resolveCasinoSession();
-    const context: BetContext = {
-      sessionId: session.sessionId,
-      openingBalance: session.openingBalance,
-      idempotencyKey: input.idempotencyKey,
-    };
+  async ({ input, user }) => {
+    const base = { roundId: input.roundId, action: input.action };
+    const key = input.idempotencyKey;
+    const outcome =
+      input.game === "blackjack"
+        ? await actBlackjack(user, key, base)
+        : input.game === "mines"
+          ? await actMines(user, key, { ...base, tile: input.tile })
+          : await actCrash(user, key, base);
 
-    const outcome = await actBlackjack(context, input.roundId, input.action);
-    if (!outcome.ok) {
-      return fail("bad_request", outcome.errorKey, { status: 422 });
-    }
-
-    const response = ok(outcome);
-    if (session.issued) {
-      response.headers.append("set-cookie", sessionCookie(session.sessionId));
-    }
-    return response;
+    if (!outcome.ok) return fail("bad_request", outcome.errorKey, { status: 422 });
+    return ok(outcome.data);
   },
-  { schema: bodySchema, rateLimit: "betPlacement", audit: "bet.placed" },
+  { schema: bodySchema, auth: "user", rateLimit: "betPlacement" },
 );
