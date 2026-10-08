@@ -12,7 +12,6 @@ import {
   Radio,
   ShieldCheck,
   Star,
-  UserPlus,
 } from "lucide-react";
 import type { SessionUser, Sport, Wallet } from "@/types";
 import { logoutAction } from "@/app/actions/auth";
@@ -64,16 +63,10 @@ export function MobileNav({ sports, user, wallet }: MobileNavProps) {
         {user && wallet ? (
           <BalanceDisplay balance={wallet.balance} variant="block" />
         ) : (
-          <div className="grid grid-cols-2 gap-2">
-            <Link href="/login" onClick={close} className={buttonStyles({ variant: "secondary" })}>
-              <LogIn size={15} aria-hidden="true" />
-              {t("nav.login")}
-            </Link>
-            <Link href="/register" onClick={close} className={buttonStyles()}>
-              <UserPlus size={15} aria-hidden="true" />
-              {t("nav.register")}
-            </Link>
-          </div>
+          <Link href="/login" onClick={close} className={buttonStyles({ fullWidth: true })}>
+            <LogIn size={15} aria-hidden="true" />
+            {t("nav.login")}
+          </Link>
         )}
 
         <Section title={t("nav.sports")}>

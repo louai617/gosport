@@ -28,35 +28,47 @@ the database, for the user the session cookie belongs to.**
 | Concern | Control | Where |
 |---|---|---|
 | Password storage | **Argon2id** (m = 19 MiB, t = 2, p = 1 — the OWASP baseline) through `@node-rs/argon2`. No weak fallback exists. | `src/server/auth/password.ts` |
-| Password policy | ≥ 10 characters, mixed classes, ≤ 128, common-password deny-list. Minimum length and a symbol requirement are raised from the admin Settings screen. | `src/lib/validation.ts`, `settings/registry.ts` |
+| Passwords are generated | Nobody chooses a password for someone else: the server generates it from the OS CSPRNG (`randomInt`, no modulo bias; unambiguous alphabet, ≥ 12 characters, honouring the configured minimum length and symbol rule), shows it **once** to the person creating the account, and stores only the Argon2id hash. It is never logged or audited. The holder must replace it at first sign-in. | `src/server/auth/credentials.ts`, `accountService.ts` |
+| Password policy | What a holder chooses for themselves: ≥ 10 characters, mixed classes, ≤ 128, common-password deny-list. Minimum length and a symbol requirement are raised from the superadmin Settings screen. | `src/lib/validation.ts`, `settings/registry.ts` |
 | Session token | 32 random bytes in an `httpOnly`, `sameSite=lax`, `secure` (production) cookie. The database stores only the **HMAC-SHA256** of the token, keyed by `SESSION_SECRET`. A database leak therefore yields no usable session. | `src/server/auth/session.ts`, `tokens.ts` |
 | Not a JWT | A suspension, self-exclusion or role change must take effect on the *next request*. `readSession` re-reads the user row every time. | `session.ts` |
-| Lifetimes | Idle and absolute timeouts, both enforced server-side. **Administrators get shorter ones** (30 min idle / 8 h absolute by default). | `env.ts` (`SESSION_*`, `ADMIN_SESSION_*`) |
-| Fixation / rotation | A new token is issued at sign-in and on every password change; password change and reset revoke all other sessions. | `authService.ts` |
+| Lifetimes | Idle and absolute timeouts, both enforced server-side. **Staff (managers and the superadmin) get shorter ones** (30 min idle / 8 h absolute by default). | `env.ts` (`SESSION_*`, `ADMIN_SESSION_*`) |
+| Fixation / rotation | A new token is issued at sign-in and on every password change; password change and reset revoke all other sessions, and generating a new password for someone ends all of their sessions at once. | `authService.ts`, `accountService.ts` |
 | Lockout | `failedLoginCount` / `lockedUntil` live on the user row, so they survive restarts and apply across instances. Threshold and duration are settings (default 5 failures → 15 min). | `authService.ts` |
-| Enumeration | One error key for "unknown account" and "wrong password"; an unknown account still performs a dummy Argon2 verify so timing matches; forgot-password answers identically either way. | `authService.ts` |
-| Forced change | `mustChangePassword` (set by the seed and by admin-issued credentials) blocks every page and API except the change-password flow. | `pageGuard.ts`, `guard.ts` |
+| Enumeration | One error key for "unknown account" and "wrong password"; an unknown account still performs a dummy Argon2 verify so timing matches. (There is no sign-up and no forgot-password endpoint to probe.) | `authService.ts` |
+| Forced change | `mustChangePassword` (set by the seed and on every generated password) blocks every page and API except the change-password flow. | `pageGuard.ts`, `guard.ts` |
 | Account states | `PENDING`, `ACTIVE`, `SUSPENDED`, `LOCKED`, `SELF_EXCLUDED`, `CLOSED`. Only `ACTIVE` and `SELF_EXCLUDED` can hold a session (a self-excluded player can still see their account and withdraw, but cannot wager); moving to any other state revokes live sessions. | `playerAdminService.ts`, `sessionUser.ts` |
 
-The first administrator is created **only** by `npm run db:seed`, from
-`ADMIN_EMAIL` / `ADMIN_PASSWORD` in the environment. There is no default
-account, no credential in the repository, and the seeded account must change its
-password on first sign-in. Break-glass access without typing a password anywhere:
-`npm run admin:recovery-link -- <email>` prints a single-use, expiring reset
-link (stored only as a hash) and writes an audit record.
+**There is no self-registration and no e-mail.** Accounts form a chain of ownership
+(`User.createdById`): the superadmin creates managers, a manager creates players.
+The first superadmin is created **only** by `npm run db:seed`, from `ADMIN_USERNAME` /
+`ADMIN_PASSWORD` in the environment; there is no default account and no credential in
+the repository, and the seeded account must change its password on first sign-in.
+Break-glass access for the superadmin, without typing a password anywhere:
+`npm run admin:recovery-link -- <username>` prints a single-use, expiring reset link
+(stored only as a hash) and writes an audit record. Managers and players are recovered
+by the account above them generating a new password.
 
 ---
 
 ## 3. Authorisation (RBAC)
 
-Roles are `PLAYER` and `ADMIN`. Decisions are made by `can(role, permission)`
-(`src/server/auth/permissions.ts`), never by comparing a role name at a call
-site; adding a staff role is a schema member plus one row in that table.
+Roles are `PLAYER`, `MANAGER` and `SUPERADMIN`. Decisions are made by
+`can(role, permission)` (`src/server/auth/permissions.ts`), never by comparing a role
+name at a call site; adding a staff role is a schema member plus one row in that table.
 
-Permissions: `admin.access`, `dashboard.read`, `players.{read,create,update,suspend,lock,credentials}`,
-`players.sessions.revoke`, `wallet.{read,adjust,adjust.approve}`, `withdrawals.process`,
-`transactions.read`, `bets.{read,settle}`, `reports.{read,export}`, `audit.read`,
-`notifications.read`, `settings.{read,update}`, `search.use`, `rg.read`.
+- **Superadmin:** every permission except `credit.distribute` (selling out of a balance
+  is a manager's act; the superadmin issues credit instead, `credit.issue`).
+- **Manager:** `admin.access`, `players.read/create/suspend/credentials`,
+  `transactions.read`, `notifications.read`, `credit.distribute` — nothing else. No
+  dashboard, audit log, settings, reports, bets, wallet adjustments, withdrawal queue or
+  other managers.
+- **Scope.** A permission says the role may do the thing; **scope says to whom**.
+  Every player lookup goes through `managedPlayerWhere(actor)` (`src/server/auth/scope.ts`):
+  a manager reaches only `createdById = themselves`, and a guessed id outside that is
+  "not found", never a read or a write. A manager's ledger view is limited to their own
+  wallet and their players' (`userScope`). Only the superadmin reaches managers
+  (`managedManagerWhere`).
 
 Layering — **the service is the control, the page guard is a convenience**:
 
@@ -74,8 +86,23 @@ Layering — **the service is the control, the page guard is a convenience**:
    id taken from the request. Admin reads of another player are audited.
 
 Privileged operations additionally require a reason, and balance adjustments
-above `wallet.adjustmentApprovalThreshold` need a **second administrator**
-(`AdjustmentRequest`): the requester cannot approve their own request.
+above `wallet.adjustmentApprovalThreshold` need a **second superadmin**
+(`AdjustmentRequest`): the requester cannot approve their own request. Credit
+issued to a manager (`credit.issue`) does **not** go through that queue — with a single
+superadmin there is nobody to approve — so it is audited `critical` and capped per
+issue by `wallet.maxAdjustmentAmount`.
+
+### The credit chain
+
+```
+superadmin ──issues──▶ manager ──sells──▶ player
+ (ADMIN_CREDIT)        (CREDIT_TRANSFER − / DEPOSIT +, one transaction)
+```
+
+A sale is two ledger entries (the manager's debit through the guarded atomic update, the
+player's `DEPOSIT` credit, linked by `relatedId`) in one database transaction, idempotent
+on a client key, subject to the player's own deposit limits, and audited. A manager can
+never sell more than they hold, however many requests race.
 
 ---
 
@@ -104,8 +131,7 @@ rate limit → read body once → CSRF → auth guard → zod → handler → au
 | Policy | Limit | Store |
 |---|---|---|
 | `login` | 10 / 5 min | database |
-| `register` | 5 / h | database |
-| `passwordReset` | 5 / h | database |
+| `passwordReset` (superadmin recovery link) | 5 / h | database |
 | `password` (change) | 10 / 15 min | database |
 | `deposit` / withdrawal | 10 / h | database |
 | `betPlacement` | 120 / min | memory |
@@ -139,7 +165,7 @@ and PostgreSQL):
 The application adds: a guarded atomic debit (`updateMany … balance ≥ amount`),
 unique `(userId, idempotencyKey)` so a retried request cannot double-spend,
 `reconcileWallet` (balance must equal the sum of entries — shown on the admin
-player page and dashboard), and conditional claims so two administrators cannot
+player page and dashboard), and conditional claims so two superadmins cannot
 both process one withdrawal.
 
 Money is stored as `BigInt` **millimes** (1 TND = 1000); the application uses
@@ -159,9 +185,10 @@ settlement, settings changes, report exports and blocked/forbidden attempts.
 
 - Money- and state-changing events pass `tx`, so the audit row commits **in the
   same transaction** as the change — either both exist or neither does.
-- `redact()` strips anything keyed like a secret, hashes e-mail addresses, masks
-  phone numbers and bounds depth and length. Passwords, tokens and card data
-  never reach it; the CSV export contains no e-mail addresses.
+- `redact()` strips anything keyed like a secret and bounds depth and length.
+  Passwords, tokens and card data never reach it — a generated password appears in
+  exactly one HTTP response and nowhere else; the integration suite asserts it is in no
+  audit row.
 - There is no API to edit or delete audit rows, and the database would refuse.
 - Reading the log is itself permissioned (`audit.read`); exporting is audited.
 
@@ -213,14 +240,14 @@ Exhaustive by intent. These are gaps, not hidden features.
 
 - **Two-factor authentication.** Not built; the strongest next step for admin
   accounts.
-- **E-mail / SMS delivery.** Only an in-app notification channel and a console
-  transport for development exist. Password-reset and invitation links are
-  therefore issued by an administrator from the player page (or the CLI) and
-  shown once — they are not sent.
-- **Payments.** No provider. Deposits are recorded by an administrator;
-  withdrawals are paid out by the operator out of band and then marked completed.
+- **E-mail / SMS.** None exists, by design: accounts carry no address or number. A
+  lost password is replaced by the account above generating a new one.
+- **Payments.** No provider. Credit is issued by the superadmin and sold on by
+  managers; withdrawals are paid out by the operator out of band and then marked
+  completed by the superadmin.
 - **Identity and age verification.** `kycStatus` is a **manual operator
-  decision**; the registration age tick-box is a self-declaration.
+  decision**. Nothing checks anyone's age: whoever creates an account is responsible
+  for the holder being of age.
 - **National self-exclusion register**, sanctions screening, device fingerprinting,
   velocity/anti-fraud rules.
 - **Shared rate limiting for the memory-backed policies** (see §4). A Redis
@@ -237,7 +264,7 @@ Exhaustive by intent. These are gaps, not hidden features.
 ## 10. Before real money
 
 `env.ts` refuses `APP_MODE=live` unless every provider, the licence and a
-non-`mock` adapter are configured. Beyond that gate: 2FA for administrators,
+non-`mock` adapter are configured. Beyond that gate: 2FA for staff accounts,
 Redis rate limiting, audit shipping, an external penetration test, a
 vulnerability-disclosure policy and a named security contact — and, above all,
 the licensing and legal work in `COMPLIANCE.md`.

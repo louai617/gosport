@@ -1,7 +1,6 @@
 "use client";
 
 
-import Link from "next/link";
 import { loginAction } from "@/app/actions/auth";
 import { useFormAction } from "@/lib/useFormAction";
 import { useT } from "@/i18n/I18nProvider";
@@ -31,7 +30,7 @@ export function LoginForm({ next }: LoginFormProps) {
         autoCapitalize="none"
         spellCheck={false}
         required
-        label={t("auth.field.identifier")}
+        label={t("auth.field.username")}
         error={state.fieldErrors?.identifier ? t(state.fieldErrors.identifier) : undefined}
       />
 
@@ -43,15 +42,7 @@ export function LoginForm({ next }: LoginFormProps) {
         error={state.fieldErrors?.password ? t(state.fieldErrors.password) : undefined}
       />
 
-      <div className="flex items-center justify-between gap-3">
-        <Checkbox name="rememberMe" label={t("auth.login.remember")} />
-        <Link
-          href="/forgot-password"
-          className="text-small font-medium text-primary underline-offset-2 hover:underline"
-        >
-          {t("auth.login.forgot")}
-        </Link>
-      </div>
+      <Checkbox name="rememberMe" label={t("auth.login.remember")} />
 
       <Button type="submit" fullWidth size="lg" loading={pending}>
         {t("auth.login.submit")}

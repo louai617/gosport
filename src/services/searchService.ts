@@ -3,6 +3,7 @@ import "server-only";
 import { fromBig } from "@/lib/money";
 import { prisma } from "@/server/db";
 import { requirePermission } from "@/server/auth/guard";
+import { managedPlayerWhere } from "@/server/auth/scope";
 import { cleanSearch, containsCI } from "@/server/repositories/filters";
 
 /**
@@ -31,16 +32,14 @@ export async function searchAdmin(raw: string): Promise<AdminSearchResult[]> {
   if (can(actor.role, "players.read")) {
     const players = await prisma.user.findMany({
       where: {
-        role: "PLAYER",
+        ...managedPlayerWhere(actor),
         OR: [
           { id: query },
           { username: containsCI(query) },
-          { email: containsCI(query) },
-          { phone: containsCI(query) },
           { profile: { displayName: containsCI(query) } },
         ],
       },
-      select: { id: true, username: true, email: true, status: true },
+      select: { id: true, username: true, status: true, createdBy: { select: { username: true } } },
       orderBy: { createdAt: "desc" },
       take: 6,
     });
@@ -49,7 +48,7 @@ export async function searchAdmin(raw: string): Promise<AdminSearchResult[]> {
         kind: "player",
         id: player.id,
         title: player.username,
-        subtitle: `${player.email} · ${player.status.toLowerCase()}`,
+        subtitle: `${player.status.toLowerCase()}${player.createdBy ? ` · ${player.createdBy.username}` : ""}`,
         href: `/admin/players/${player.id}`,
       });
     }

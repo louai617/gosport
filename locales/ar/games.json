@@ -202,5 +202,20 @@
   "games.verify.rouletteResult": "تستقر الكرة على {pocket}",
   "games.verify.blackjackResult": "أول أربع أوراق (أنت، الموزع، أنت، الموزع): {cards}",
   "casino.error.roundInProgress": "أنهِ جولتك المفتوحة قبل تغيير البذرة",
-  "casino.error.concurrentAction": "تغيّرت الجولة للتو — حاول مجددًا"
+  "casino.error.concurrentAction": "تغيّرت الجولة للتو — حاول مجددًا",
+  "games.plays": "{count} جولة لُعبت",
+  "games.filter.search": "ابحث عن لعبة",
+  "games.filter.availability": "التوفر",
+  "games.filter.allGames": "كل الألعاب",
+  "games.filter.playable": "متاحة للعب الآن",
+  "games.filter.sort": "الترتيب حسب",
+  "games.filter.category": "الفئة",
+  "games.filter.all": "الكل",
+  "games.filter.results": "{count} لعبة",
+  "games.filter.reset": "مسح عوامل التصفية",
+  "games.filter.empty": "لا توجد لعبة تطابق عوامل التصفية هذه.",
+  "games.sort.plays": "الأكثر لعبًا",
+  "games.sort.name": "الاسم (أ–ي)",
+  "games.sort.rtp": "الأعلى عائدًا",
+  "games.sort.playsNote": "الأكثر لعبًا أولًا"
 }

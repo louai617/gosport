@@ -30,11 +30,13 @@ export default async function AdminPlayersPage({ searchParams }: PageProps) {
       <PlayersTable
         data={players}
         canCreate={can(user.role, "players.create")}
+        oversight={user.role === "superadmin"}
         params={{
           search: raw.search,
           status: raw.status,
           kycStatus: raw.kycStatus,
           restricted: raw.restricted,
+          manager: raw.manager,
           from: raw.from,
           to: raw.to,
           sort: raw.sort,

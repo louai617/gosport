@@ -202,5 +202,20 @@
   "games.verify.rouletteResult": "La bille s’arrête sur {pocket}",
   "games.verify.blackjackResult": "Quatre premières cartes (vous, croupier, vous, croupier) : {cards}",
   "casino.error.roundInProgress": "Terminez votre tour en cours avant de changer de graine",
-  "casino.error.concurrentAction": "Ce tour vient de changer — réessayez"
+  "casino.error.concurrentAction": "Ce tour vient de changer — réessayez",
+  "games.plays": "{count} parties jouées",
+  "games.filter.search": "Rechercher un jeu",
+  "games.filter.availability": "Disponibilité",
+  "games.filter.allGames": "Tous les jeux",
+  "games.filter.playable": "Jouables maintenant",
+  "games.filter.sort": "Trier par",
+  "games.filter.category": "Catégorie",
+  "games.filter.all": "Tous",
+  "games.filter.results": "{count} jeux",
+  "games.filter.reset": "Effacer les filtres",
+  "games.filter.empty": "Aucun jeu ne correspond à ces filtres.",
+  "games.sort.plays": "Les plus joués",
+  "games.sort.name": "Nom (A–Z)",
+  "games.sort.rtp": "Meilleur retour",
+  "games.sort.playsNote": "les plus joués d’abord"
 }

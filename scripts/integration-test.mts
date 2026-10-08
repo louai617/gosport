@@ -110,20 +110,20 @@ const money = (millimes: bigint | number) => Number(millimes) / 1000;
 
 /* -------------------------------------------------------------- provisioning */
 
-async function provisionAdmin(label: string) {
+/** A staff account created straight in the database (the seed's equivalent). */
+async function provisionStaff(label: string, role: "SUPERADMIN" | "MANAGER") {
   const username = `t${RUN}${label}`;
-  const email = `${username}@test.local`;
   const user = await prisma.user.create({
     data: {
       username,
-      email,
       passwordHash: await createHasher().hash(PASSWORD),
-      role: "ADMIN",
+      role,
       status: "ACTIVE",
-      profile: { create: { displayName: username, firstName: "Test", lastName: "Admin" } },
+      profile: { create: { displayName: username } },
+      wallet: { create: {} },
     },
   });
-  return { id: user.id, username, email };
+  return { id: user.id, username };
 }
 
 async function ledgerSum(userId: string) {
@@ -132,22 +132,26 @@ async function ledgerSum(userId: string) {
   return { sum: money(sum._sum.amount ?? 0n), balance: money(wallet?.balance ?? 0n) };
 }
 
-async function register(username: string, extra: Record<string, unknown> = {}) {
-  const client = await new Client().init();
-  const reply = await client.post("/api/auth/register", {
-    username,
-    firstName: "Test",
-    lastName: "Player",
-    email: `${username}@test.local`,
-    phone: "20123456",
-    password: PASSWORD,
-    confirmPassword: PASSWORD,
-    dateOfBirth: "1990-05-05",
-    country: "TN",
-    ageConfirmed: true,
-    termsAccepted: true,
-    ...extra,
+/**
+ * A player the way the platform now makes them: created under a manager. The row
+ * is written directly (the creation flow has its own section below), then the
+ * player signs in with the password it was given.
+ */
+async function register(username: string) {
+  const user = await prisma.user.create({
+    data: {
+      username,
+      passwordHash: await createHasher().hash(PASSWORD),
+      role: "PLAYER",
+      status: "ACTIVE",
+      createdById: defaultManager.id,
+      profile: { create: { displayName: username } },
+      wallet: { create: {} },
+    },
   });
+  const client = await new Client().init();
+  const reply = await client.login(username, PASSWORD);
+  void user;
   return { client, reply };
 }
 
@@ -166,8 +170,9 @@ async function credit(admin: Client, playerId: string, amount: number, type = "D
 
 console.log(`\nSportGo integration test — ${BASE} — run ${RUN}\n`);
 
-const adminA = await provisionAdmin("a");
-const adminB = await provisionAdmin("b");
+const adminA = await provisionStaff("a", "SUPERADMIN");
+const adminB = await provisionStaff("b", "SUPERADMIN");
+const defaultManager = await provisionStaff("m0", "MANAGER");
 
 section("Anonymous access");
 {
@@ -182,34 +187,37 @@ section("Anonymous access");
   check("/admin redirects an anonymous visitor to sign in", adminPage.status === 307 && (adminPage.headers.get("location") ?? "").startsWith("/login"));
 }
 
-section("Registration");
+section("There is no sign-up");
+{
+  const anon = await new Client().init();
+  const reg = await anon.post("/api/auth/register", { username: `zz${RUN}`, password: PASSWORD });
+  check("the sign-up endpoint is gone", reg.status === 404, `got ${reg.status}`);
+  const forgot = await anon.post("/api/auth/password/forgot", { email: "a@b.co" });
+  check("so is self-service password recovery (no e-mail exists)", forgot.status === 404, `got ${forgot.status}`);
+  const page = await fetch(`${BASE}/register`, { redirect: "manual" });
+  const forgotPage = await fetch(`${BASE}/forgot-password`, { redirect: "manual" });
+  check("/register and /forgot-password are 404", page.status === 404 && forgotPage.status === 404, `${page.status} ${forgotPage.status}`);
+  const before = await prisma.user.count();
+  await anon.post("/api/auth/register", { username: `zz${RUN}`, password: PASSWORD });
+  check("…and nothing was created", (await prisma.user.count()) === before);
+}
+
+section("Players sign in with the credentials they were given");
 const uA = `pa${RUN}`;
 const uB = `pb${RUN}`;
 const { client: playerA, reply: regA } = await register(uA);
-check("player A registers (201) and is signed in", regA.status === 201, JSON.stringify(regA.error));
+check("player A signs in", regA.status === 200, JSON.stringify(regA.error));
 const idA = regA.data?.user?.id as string;
 const { client: playerB, reply: regB } = await register(uB);
 const idB = regB.data?.user?.id as string;
-check("player B registers", regB.status === 201);
-{
-  const dupe = await register(uA, { email: `other-${uA}@test.local` });
-  check("duplicate username refused with a field error", dupe.reply.status === 422 && dupe.reply.error?.fields?.some((f) => f.field === "username"));
-  const dupeMail = await register(`x${uA}`, { email: `${uA}@test.local` });
-  check("duplicate e-mail refused", dupeMail.reply.status === 422 && dupeMail.reply.error?.fields?.some((f) => f.field === "email"));
-  const under = await register(`u${RUN}`, { dateOfBirth: new Date(Date.now() - 16 * 365.25 * 864e5).toISOString().slice(0, 10) });
-  check("under-age date of birth refused server-side", under.reply.status === 422);
-  const weak = await register(`w${RUN}`, { password: "password1234", confirmPassword: "password1234" });
-  check("weak password refused", weak.reply.status === 422);
-  const escalate = await register(`e${RUN}`, { role: "ADMIN", status: "ACTIVE", balance: 1_000_000 });
-  const row = await prisma.user.findUnique({ where: { id: escalate.reply.data?.user?.id }, include: { wallet: true } });
-  check("mass assignment: role / balance in the body are ignored", row?.role === "PLAYER" && (row?.wallet?.balance ?? 0n) === 0n);
-}
+check("player B signs in", regB.status === 200);
 {
   const me = await playerA.get("/api/account");
   check("GET /api/account returns the player's own overview", me.status === 200 && me.data.user.id === idA);
   check("new wallet starts at zero", me.data.wallet.balance === 0);
   const stored = await prisma.user.findUnique({ where: { id: idA } });
   check("password is stored as an Argon2id hash, never plaintext", stored!.passwordHash.startsWith("$argon2id$") && !stored!.passwordHash.includes(PASSWORD));
+  check("a player carries no e-mail or phone (there is no such column)", !("email" in stored!) && !("phone" in stored!));
 }
 
 section("Sign-in, lockout and enumeration resistance");
@@ -220,8 +228,6 @@ section("Sign-in, lockout and enumeration resistance");
   check("unknown user and wrong password give the same status + message", unknown.status === 401 && wrong.status === 401 && unknown.error?.messageKey === wrong.error?.messageKey);
   const okLogin = await c.login(uA, PASSWORD);
   check("correct credentials sign in", okLogin.status === 200 && okLogin.data.user.id === idA);
-  const byEmail = await (await new Client().init()).login(`${uA}@test.local`, PASSWORD);
-  check("sign-in by e-mail works", byEmail.status === 200);
 
   // lockout: a fresh account so the earlier steps don't count
   const { reply: lockReg } = await register(`lk${RUN}`);
@@ -258,7 +264,7 @@ section("Sessions");
 section("Role-based access control");
 const admin = await new Client().init();
 const login = await admin.login(adminA.username, PASSWORD);
-check("admin signs in", login.status === 200 && login.data.user.role === "admin", JSON.stringify(login.error));
+check("admin signs in", login.status === 200 && login.data.user.role === "superadmin", JSON.stringify(login.error));
 {
   const endpoints: Array<[string, string, unknown?]> = [
     ["GET", "/api/admin/dashboard"],
@@ -273,10 +279,13 @@ check("admin signs in", login.status === 200 && login.data.user.role === "admin"
     ["GET", "/api/admin/settings"],
     ["GET", "/api/admin/reports/export?kind=summary"],
     ["GET", "/api/admin/wallet/requests"],
-    ["POST", "/api/admin/players", { username: "hacker1", email: "h@x.io", firstName: "Ha", lastName: "Cker", country: "TN", credentialMode: "invitation" }],
+    ["POST", "/api/admin/players", { displayName: "hacker" }],
+    ["GET", "/api/admin/managers"],
+    ["POST", "/api/admin/managers", { displayName: "hacker" }],
+    ["POST", `/api/admin/players/${idB}/credit`, { amount: 10 }],
     ["POST", "/api/admin/wallet/adjustments", { playerId: idA, type: "ADMIN_CREDIT", amount: 100, reason: "free money", confirm: true }],
     ["POST", `/api/admin/players/${idB}/status`, { action: "suspend", reason: "because", confirm: true }],
-    ["POST", `/api/admin/players/${idB}/credential-link`, {}],
+    ["POST", `/api/admin/players/${idB}/credentials`, { confirm: true }],
     ["PATCH", "/api/admin/settings", { "general.maintenanceMode": true }],
   ];
   const before = await prisma.transaction.count({ where: { userId: idA } });
@@ -557,11 +566,6 @@ section("Responsible gambling is enforced by the server");
 
 section("Settings take effect");
 {
-  const off = await admin.call("PATCH", "/api/admin/settings", { "players.registrationEnabled": false });
-  check("administrator closes registration", off.status === 200);
-  const closed = await register(`cl${RUN}`);
-  check("registration is refused while closed", closed.reply.status === 422 && closed.reply.error?.messageKey === "auth.error.registrationClosed", `${closed.reply.status} ${closed.reply.error?.messageKey}`);
-  await admin.call("PATCH", "/api/admin/settings", { "players.registrationEnabled": true });
   const unknownKey = await admin.call("PATCH", "/api/admin/settings", { "evil.setting": true });
   check("an unknown setting key is rejected, not stored", unknownKey.status === 422);
   const outOfRange = await admin.call("PATCH", "/api/admin/settings", { "security.maxFailedLogins": 9999 });
@@ -570,59 +574,200 @@ section("Settings take effect");
   await admin.call("PATCH", "/api/admin/settings", { "general.maintenanceMode": true });
   const blocked = await (await new Client().init()).login(uB, PASSWORD);
   const adminOk = await (await new Client().init()).login(adminA.username, PASSWORD);
-  check("maintenance mode blocks players from signing in, but not administrators", blocked.status === 401 && adminOk.status === 200);
+  check("maintenance mode blocks players from signing in, but not the superadmin", blocked.status === 401 && adminOk.status === 200);
   await admin.call("PATCH", "/api/admin/settings", { "general.maintenanceMode": false });
 }
 
-section("Invitation and password flows");
+section("Managers: generated credentials and the credit chain");
+const mgrB = await provisionStaff("mb", "MANAGER");
 {
-  const created = await admin.post("/api/admin/players", {
-    username: `inv${RUN}`, email: `inv${RUN}@test.local`, firstName: "Invited", lastName: "Person", country: "TN", locale: "fr", credentialMode: "invitation",
+  const pageStatus = async (client: Client, path: string) =>
+    (await fetch(`${BASE}${path}`, { redirect: "manual", headers: { cookie: [...client.jar].map(([k, v]) => `${k}=${v}`).join("; "), "x-forwarded-for": client.ip } })).status;
+  const fresh = async (username: string, password: string) => {
+    const c = await new Client().init();
+    const reply = await c.login(username, password);
+    return { c, reply };
+  };
+
+  /* ---- the superadmin creates a manager ------------------------------------------------- */
+  const created = await admin.post("/api/admin/managers", { displayName: "Test Manager", initialCredit: 500, idempotencyKey: randomBytes(8).toString("hex") });
+  check("the superadmin creates a manager (201) with generated credentials", created.status === 201 && /^m-/.test(created.data?.credentials?.username ?? "") && (created.data?.credentials?.password ?? "").length >= 12, JSON.stringify(created.error));
+  const mId = created.data.managerId as string;
+  const mUser = created.data.credentials.username as string;
+  const generated = created.data.credentials.password as string;
+  const row = await prisma.user.findUnique({ where: { id: mId } });
+  check("the password is stored only as an Argon2id hash", row!.passwordHash.startsWith("$argon2id$") && !row!.passwordHash.includes(generated));
+  check("the manager belongs to the superadmin and must change the generated password", row!.role === "MANAGER" && row!.createdById === adminA.id && row!.mustChangePassword);
+  const trail = await prisma.auditLog.findMany({ where: { targetUserId: mId } });
+  check("the generated password appears nowhere in the audit trail", trail.length > 0 && trail.every((r) => !JSON.stringify(r).includes(generated)));
+
+  let M = (await fresh(mUser, generated)).c;
+  const gate = await M.get("/api/admin/players");
+  check("the manager signs in with it, but is held to a password change", gate.status === 403 && gate.error?.messageKey === "auth.error.passwordChangeRequired", `${gate.status} ${gate.error?.messageKey}`);
+  const NEWM = `${PASSWORD}-mgr1`;
+  const changedM = await M.post("/api/auth/password/change", { currentPassword: generated, newPassword: NEWM, confirmPassword: NEWM });
+  check("the manager chooses their own password", changedM.status === 200, JSON.stringify(changedM.error));
+  check("…and the generated one stops working", (await fresh(mUser, generated)).reply.status === 401);
+  M = (await fresh(mUser, NEWM)).c;
+  const bal0 = await ledgerSum(mId);
+  check("the opening credit is on the manager's wallet and the ledger reconciles", bal0.balance === 500 && bal0.sum === 500, JSON.stringify(bal0));
+
+  /* ---- what a manager cannot reach -------------------------------------------------------- */
+  const denied: Array<[string, string, unknown?]> = [
+    ["GET", "/api/admin/dashboard"],
+    ["GET", "/api/admin/audit-logs"],
+    ["GET", "/api/admin/settings"],
+    ["GET", "/api/admin/managers"],
+    ["POST", "/api/admin/managers", { displayName: "x" }],
+    ["POST", `/api/admin/managers/${mId}/credit`, { amount: 10 }],
+    ["GET", "/api/admin/bets"],
+    ["GET", "/api/admin/wallet/requests"],
+    ["GET", "/api/admin/search?q=test"],
+    ["GET", "/api/admin/reports/export?kind=summary"],
+    ["POST", "/api/admin/wallet/adjustments", { playerId: idA, type: "ADMIN_CREDIT", amount: 5, reason: "free money", confirm: true }],
+    ["POST", `/api/admin/players/${idA}/restrictions`, { wageringBlocked: true, withdrawalsBlocked: false, reason: "not mine" }],
+  ];
+  const leaks: string[] = [];
+  for (const [method, path, body] of denied) {
+    const r = await M.call(method, path, body);
+    if (r.status !== 403) leaks.push(`${method} ${path.split("?")[0]} → ${r.status}`);
+  }
+  check("a manager is refused every superadmin endpoint", leaks.length === 0, leaks.join("; "));
+
+  /* ---- creating a player ------------------------------------------------------------------- */
+  const p1 = await M.post("/api/admin/players", {
+    displayName: "Test P1", initialCredit: 50, role: "SUPERADMIN", status: "ACTIVE", balance: 1_000_000,
+    idempotencyKey: randomBytes(8).toString("hex"),
   });
-  check("admin creates a player by invitation", created.status === 201 && !!created.data.invitationLink, JSON.stringify(created.error));
-  const link: string = created.data.invitationLink;
-  const token = new URL(link).searchParams.get("token")!;
-  const stored = await prisma.passwordToken.findFirst({ where: { userId: created.data.playerId } });
-  check("the invitation token is stored only as a hash", !!stored && stored.tokenHash !== token);
-  const pre = await (await new Client().init()).login(`inv${RUN}`, PASSWORD);
-  check("an invited account cannot sign in before accepting", pre.status === 401);
-  const c = await new Client().init();
-  const bad = await c.post("/api/auth/password/reset", { token, password: "short", confirmPassword: "short" });
-  check("accepting with a weak password is refused", bad.status === 422);
-  const accept = await c.post("/api/auth/password/reset", { token, password: PASSWORD, confirmPassword: PASSWORD });
-  check("accepting the invitation sets the password", accept.status === 200, JSON.stringify(accept.error));
-  const reuse = await c.post("/api/auth/password/reset", { token, password: PASSWORD + "x", confirmPassword: PASSWORD + "x" });
-  check("the link is single-use", reuse.status === 422);
-  const nowIn = await (await new Client().init()).login(`inv${RUN}`, PASSWORD);
-  check("the account is active and signs in", nowIn.status === 200);
+  check("a manager creates a player (201) with generated credentials", p1.status === 201 && /^p-/.test(p1.data?.credentials?.username ?? ""), JSON.stringify(p1.error));
+  const p1Id = p1.data.playerId as string;
+  const p1User = p1.data.credentials.username as string;
+  const p1Pass = p1.data.credentials.password as string;
+  const p1Row = await prisma.user.findUnique({ where: { id: p1Id } });
+  check("the player is the manager's, is a plain player (role in the body ignored) and must change the password", p1Row!.role === "PLAYER" && p1Row!.createdById === mId && p1Row!.mustChangePassword);
+  const afterCreate = { m: await ledgerSum(mId), p: await ledgerSum(p1Id) };
+  check("the opening credit came out of the manager's balance (500 → 450; player 50)", afterCreate.m.balance === 450 && afterCreate.p.balance === 50, JSON.stringify(afterCreate));
+  check("both ledgers reconcile", afterCreate.m.sum === afterCreate.m.balance && afterCreate.p.sum === afterCreate.p.balance);
+  const legs = await prisma.transaction.findMany({ where: { userId: { in: [mId, p1Id] }, type: { in: ["CREDIT_TRANSFER", "DEPOSIT"] } } });
+  const out = legs.find((l) => l.userId === mId && l.type === "CREDIT_TRANSFER");
+  const inn = legs.find((l) => l.userId === p1Id && l.type === "DEPOSIT");
+  check("the two sides of the sale are equal, opposite and linked", !!out && !!inn && out.amount === -inn.amount && inn.relatedId === out.id);
 
-  const known = await (await new Client().init()).post("/api/auth/password/forgot", { email: `inv${RUN}@test.local` });
-  const unknown = await (await new Client().init()).post("/api/auth/password/forgot", { email: `ghost${RUN}@test.local` });
-  check("forgot-password answers identically for known and unknown addresses", known.status === unknown.status && JSON.stringify(known.data) === JSON.stringify(unknown.data));
+  /* ---- the player's first sign-in ---------------------------------------------------------- */
+  let P1 = (await fresh(p1User, p1Pass)).c;
+  const held = await P1.get("/api/account");
+  check("the player signs in with the generated credentials, but must change the password first", held.status === 403 && held.error?.messageKey === "auth.error.passwordChangeRequired", `${held.status}`);
+  const NEWP = `${PASSWORD}-ply1`;
+  await P1.post("/api/auth/password/change", { currentPassword: p1Pass, newPassword: NEWP, confirmPassword: NEWP });
+  P1 = (await fresh(p1User, NEWP)).c;
+  const acct = await P1.get("/api/account");
+  check("the player then sees the credit they were sold", acct.status === 200 && acct.data.wallet.balance === 50, `${acct.status}`);
 
-  const pwd = await new Client().init();
-  await pwd.login(`inv${RUN}`, PASSWORD);
-  const second = await new Client().init();
-  await second.login(`inv${RUN}`, PASSWORD);
-  const NEW = `${PASSWORD}-new1`;
-  const wrongCurrent = await pwd.post("/api/auth/password/change", { currentPassword: "nope", newPassword: NEW, confirmPassword: NEW });
-  check("changing a password requires the current one", wrongCurrent.status === 422);
-  const changed = await pwd.post("/api/auth/password/change", { currentPassword: PASSWORD, newPassword: NEW, confirmPassword: NEW });
-  check("password change succeeds", changed.status === 200, JSON.stringify(changed.error));
-  check("…and ends the user's other sessions", (await second.get("/api/account")).status === 401);
-  check("…while the current session keeps working", (await pwd.get("/api/account")).status === 200);
-  check("the new password works", (await (await new Client().init()).login(`inv${RUN}`, NEW)).status === 200);
+  /* ---- selling more credit ------------------------------------------------------------------ */
+  const sellKey = randomBytes(8).toString("hex");
+  const sale = await M.post(`/api/admin/players/${p1Id}/credit`, { amount: 25, idempotencyKey: sellKey });
+  check("a manager sells credit to their player", sale.status === 200 && sale.data.senderBalance === 425 && sale.data.recipientBalance === 75, JSON.stringify(sale.data ?? sale.error));
+  const replay = await M.post(`/api/admin/players/${p1Id}/credit`, { amount: 25, idempotencyKey: sellKey });
+  check("a retried sale (same key) moves nothing", replay.status === 200 && (await ledgerSum(mId)).balance === 425 && (await ledgerSum(p1Id)).balance === 75);
+  const over = await M.post(`/api/admin/players/${p1Id}/credit`, { amount: 430, idempotencyKey: randomBytes(8).toString("hex") });
+  check("selling more than the manager holds is refused", over.status === 422 && over.error?.messageKey === "credit.error.insufficientBalance", `${over.status} ${over.error?.messageKey}`);
+  const race = await Promise.all(Array.from({ length: 5 }, () => M.post(`/api/admin/players/${p1Id}/credit`, { amount: 100, idempotencyKey: randomBytes(8).toString("hex") })));
+  const won = race.filter((r) => r.status === 200).length;
+  const afterRace = { m: await ledgerSum(mId), p: await ledgerSum(p1Id) };
+  check("five parallel 100-unit sales against 425: exactly four succeed and nothing goes negative", won === 4 && afterRace.m.balance === 25 && afterRace.p.balance === 475, `won=${won} ${JSON.stringify(afterRace)}`);
+  check("…and both ledgers still reconcile", afterRace.m.sum === afterRace.m.balance && afterRace.p.sum === afterRace.p.balance);
 
-  const forced = await admin.post("/api/admin/players", {
-    username: `fp${RUN}`, email: `fp${RUN}@test.local`, firstName: "Forced", lastName: "Change", country: "TN", locale: "fr", credentialMode: "password", temporaryPassword: PASSWORD,
-  });
-  const fc = await new Client().init();
-  await fc.login(`fp${RUN}`, PASSWORD);
-  const blockedUntilChange = await fc.get("/api/account");
-  check("a temporary-password account is blocked until the password is changed", blockedUntilChange.status === 403 && blockedUntilChange.error?.messageKey === "auth.error.passwordChangeRequired", `${blockedUntilChange.status} ${blockedUntilChange.error?.messageKey}`);
-  void forced;
+  /* ---- scope: a manager sees and touches only their own players ------------------------- */
+  const MB = (await fresh(mgrB.username, PASSWORD)).c;
+  const peek = await MB.get(`/api/admin/players/${p1Id}`);
+  check("another manager cannot read this manager's player (404)", peek.status === 404, `${peek.status}`);
+  const steal = await MB.post(`/api/admin/players/${p1Id}/credit`, { amount: 10 });
+  check("…nor sell them credit", steal.status === 422 && steal.error?.messageKey === "admin.players.error.notFound", `${steal.status} ${steal.error?.messageKey}`);
+  const hashBefore = (await prisma.user.findUnique({ where: { id: p1Id } }))!.passwordHash;
+  const foreignReset = await MB.post(`/api/admin/players/${p1Id}/credentials`, { confirm: true });
+  check("…nor reset their password", foreignReset.status === 403 && (await prisma.user.findUnique({ where: { id: p1Id } }))!.passwordHash === hashBefore, `${foreignReset.status}`);
+  const foreignSuspend = await MB.post(`/api/admin/players/${p1Id}/status`, { action: "suspend", reason: "not their player", confirm: true });
+  check("…nor suspend them", foreignSuspend.status === 403 && (await prisma.user.findUnique({ where: { id: p1Id } }))!.status === "ACTIVE", `${foreignSuspend.status}`);
+  const listB = await MB.get("/api/admin/players?pageSize=100");
+  check("a manager's player list never contains another manager's players", listB.status === 200 && !listB.data.items.some((p: any) => p.id === p1Id) && listB.data.items.every((p: any) => p.managerId === mgrB.id));
+  const listM = await M.get("/api/admin/players?pageSize=100");
+  check("…while the owner sees theirs", listM.data.items.length === 1 && listM.data.items[0].id === p1Id);
+  const txM = await M.get("/api/admin/transactions?pageSize=100");
+  check("a manager's ledger view holds only their own and their players' entries", txM.status === 200 && txM.data.items.length > 0 && txM.data.items.every((r: any) => r.userId === mId || r.userId === p1Id));
+  const toStaff = await M.post(`/api/admin/players/${defaultManager.id}/credit`, { amount: 5 });
+  check("a manager cannot sell credit to another manager", toStaff.status === 422 && toStaff.error?.messageKey === "admin.players.error.notFound", `${toStaff.status}`);
+  const toAdmin = await MB.post(`/api/admin/players/${adminA.id}/credit`, { amount: 5 });
+  check("…or to the superadmin", toAdmin.status === 422, `${toAdmin.status}`);
+  const adminSells = await admin.post(`/api/admin/players/${p1Id}/credit`, { amount: 5 });
+  check("the superadmin has no float to sell: the sale endpoint refuses them", adminSells.status === 403, `${adminSells.status}`);
+  const saView = await admin.get(`/api/admin/players/${p1Id}`);
+  check("the superadmin sees the player and who manages them", saView.status === 200 && saView.data.managerUsername === mUser);
+  const byManager = await admin.get(`/api/admin/players?manager=${mId}`);
+  check("…and can filter the players of one manager", byManager.data.items.length === 1 && byManager.data.items[0].id === p1Id);
+
+  /* ---- the superadmin issues more credit ---------------------------------------------------- */
+  const issue = await admin.post(`/api/admin/managers/${mId}/credit`, { amount: 100, idempotencyKey: randomBytes(8).toString("hex") });
+  check("the superadmin issues more credit to the manager", issue.status === 200 && issue.data.recipientBalance === 125, JSON.stringify(issue.data ?? issue.error));
+  const issuePlayer = await admin.post(`/api/admin/managers/${p1Id}/credit`, { amount: 10 });
+  check("credit cannot be issued to a player through the manager endpoint", issuePlayer.status === 422 && issuePlayer.error?.messageKey === "admin.managers.error.notFound", `${issuePlayer.status}`);
+  const mgrList = await admin.get("/api/admin/managers");
+  const listed = mgrList.data.items.find((m: any) => m.id === mId);
+  check("the manager list shows balance and player count", !!listed && listed.balance === 125 && listed.playerCount === 1, JSON.stringify(listed));
+
+  /* ---- the owner re-keys, suspends, reactivates ------------------------------------------- */
+  const rst = await M.post(`/api/admin/players/${p1Id}/credentials`, { confirm: true });
+  check("the owner generates a new password for their player", rst.status === 200 && !!rst.data.credentials.password && rst.data.credentials.password !== NEWP, JSON.stringify(rst.error));
+  check("…which ends the player's session and kills the old password", (await P1.get("/api/account")).status === 401 && (await fresh(p1User, NEWP)).reply.status === 401);
+  const relog = await fresh(p1User, rst.data.credentials.password);
+  check("the new password works and forces a change again", relog.reply.status === 200 && relog.reply.data.user.mustChangePassword === true);
+  const sus = await M.post(`/api/admin/players/${p1Id}/status`, { action: "suspend", reason: "testing suspension", confirm: true });
+  check("the owner suspends their player", sus.status === 200, JSON.stringify(sus.error));
+  check("a suspended player cannot sign in", (await fresh(p1User, rst.data.credentials.password)).reply.status === 401);
+  const react = await M.post(`/api/admin/players/${p1Id}/status`, { action: "reactivate", reason: "testing reactivation", confirm: true });
+  check("…and can after reactivation", react.status === 200 && (await fresh(p1User, rst.data.credentials.password)).reply.status === 200);
+
+  /* ---- audit ---------------------------------------------------------------------------------- */
+  const audits = await prisma.auditLog.findMany({ where: { action: { in: ["admin.manager.created", "admin.player.created", "admin.credit.issued", "admin.credit.sold", "admin.account.credentials_reset"] } } });
+  const kinds = new Set(audits.map((a) => a.action));
+  check("every step is in the audit trail", ["admin.manager.created", "admin.player.created", "admin.credit.issued", "admin.credit.sold", "admin.account.credentials_reset"].every((a) => kinds.has(a)), [...kinds].join(","));
+  const soldRows = audits.filter((a) => a.action === "admin.credit.sold" && a.actorId === mId);
+  check("a sale is attributed to the manager who made it", soldRows.length >= 2 && soldRows.every((a) => a.actorRole === "MANAGER"));
+  check("credit issuing is a critical audit event", audits.filter((a) => a.action === "admin.credit.issued").every((a) => a.severity === "CRITICAL"));
+  check("no audit row of this section contains a generated password", audits.every((a) => !JSON.stringify(a).includes(generated) && !JSON.stringify(a).includes(p1Pass) && !JSON.stringify(a).includes(rst.data.credentials.password)));
+
+  /* ---- notifications ------------------------------------------------------------------------ */
+  const mNotes = await M.get("/api/notifications");
+  check("the manager is notified of credit they receive", mNotes.status === 200 && mNotes.data.some((n: any) => n.kind === "credit"));
+
+  /* ---- pages ---------------------------------------------------------------------------------- */
+  const managerPages = ["/admin", "/admin/players", "/admin/players/new", `/admin/players/${p1Id}`, `/admin/players/${p1Id}?tab=wallet`, `/admin/players/${p1Id}?tab=transactions`, "/admin/transactions", "/admin/notifications", "/admin/security"];
+  const bad: string[] = [];
+  for (const path of managerPages) {
+    const status = await pageStatus(M, path);
+    if (status !== 200) bad.push(`${path} → ${status}`);
+  }
+  check(`${managerPages.length} console pages render for a manager`, bad.length === 0, bad.join("; "));
+  const hidden = ["/admin/managers", "/admin/managers/new", `/admin/managers/${mId}`, "/admin/settings", "/admin/audit", "/admin/wallet", "/admin/bets", "/admin/reports", "/admin/responsible-gambling"];
+  const open: string[] = [];
+  for (const path of hidden) {
+    const status = await pageStatus(M, path);
+    if (status !== 404) open.push(`${path} → ${status}`);
+  }
+  check("superadmin screens are 404 for a manager", open.length === 0, open.join("; "));
+  const foreignPage = await pageStatus(MB, `/admin/players/${p1Id}`);
+  check("another manager's player page is 404", foreignPage === 404, `${foreignPage}`);
+  check("the superadmin's manager pages render", (await pageStatus(admin, `/admin/managers/${mId}`)) === 200);
+
+  /* ---- the superadmin manages the manager ----------------------------------------------- */
+  const susM = await admin.post(`/api/admin/managers/${mId}/status`, { action: "suspend", reason: "testing suspension", confirm: true });
+  check("the superadmin suspends a manager", susM.status === 200, JSON.stringify(susM.error));
+  check("…whose live session ends and who cannot sign in", (await M.get("/api/admin/players")).status === 401 && (await fresh(mUser, NEWM)).reply.status === 401);
+  await admin.post(`/api/admin/managers/${mId}/status`, { action: "reactivate", reason: "testing reactivation", confirm: true });
+  const rm = await admin.post(`/api/admin/managers/${mId}/credentials`, { confirm: true });
+  check("the superadmin generates a new password for the manager", rm.status === 200 && !!rm.data.credentials.password && (await fresh(mUser, NEWM)).reply.status === 401 && (await fresh(mUser, rm.data.credentials.password)).reply.status === 200);
+  const playerCannot = await playerA.post(`/api/admin/managers/${mId}/status`, { action: "suspend", reason: "no", confirm: true });
+  check("a player cannot touch a manager (403)", playerCannot.status === 403);
 }
-
 
 section("Casino: server-authoritative rounds");
 {
@@ -850,7 +995,7 @@ section("Pages render, and are protected");
   const broken = (r: { body: string }) => r.body.includes('data-error-boundary="route"');
 
   const guest = new Client();
-  const publicRoutes = ["/", "/sports", "/sports/football", "/live", "/results", "/popular", "/games", "/games/reels", "/games/roulette", "/games/blackjack", "/games/crash", "/games/dice", "/games/mines", "/games/plinko", "/games/limbo", "/games/fairness", "/promotions", "/responsible-gambling", "/about", "/help", "/contact", "/legal/terms", "/legal/privacy", "/legal/cookies", "/login", "/register", "/forgot-password", "/reset-password?token=nope"];
+  const publicRoutes = ["/", "/sports", "/sports/football", "/live", "/results", "/popular", "/games", "/games/reels", "/games/roulette", "/games/blackjack", "/games/crash", "/games/dice", "/games/mines", "/games/plinko", "/games/limbo", "/games/fairness", "/promotions", "/responsible-gambling", "/about", "/help", "/contact", "/legal/terms", "/legal/privacy", "/legal/cookies", "/login", "/reset-password?token=nope"];
   let bad: string[] = [];
   for (const route of publicRoutes) {
     const r = await html(guest, route);
@@ -876,7 +1021,7 @@ section("Pages render, and are protected");
   }
   check(`${playerPages.length} player pages render for a signed-in player`, bad.length === 0, bad.join("; "));
 
-  const adminPages = ["/admin", "/admin?period=today", "/admin?period=lastMonth", "/admin?period=custom&from=2026-01-01&to=2026-01-31", "/admin/players", "/admin/players?status=active&search=pa", "/admin/players/new", `/admin/players/${idA}`, `/admin/players/${idA}?tab=wallet`, `/admin/players/${idA}?tab=transactions`, `/admin/players/${idA}?tab=bets`, `/admin/players/${idA}?tab=activity`, `/admin/players/${idA}?tab=responsible`, "/admin/transactions", "/admin/transactions?kind=deposit&minAmount=1", "/admin/wallet", "/admin/bets", "/admin/bets?kind=sports&status=pending", "/admin/reports", "/admin/audit", "/admin/audit?severity=critical", "/admin/notifications", "/admin/settings", "/admin/security", "/admin/responsible-gambling"];
+  const adminPages = ["/admin", "/admin?period=today", "/admin?period=lastMonth", "/admin?period=custom&from=2026-01-01&to=2026-01-31", "/admin/players", "/admin/players?status=active&search=pa", "/admin/players/new", "/admin/managers", "/admin/managers/new", `/admin/players/${idA}`, `/admin/players/${idA}?tab=wallet`, `/admin/players/${idA}?tab=transactions`, `/admin/players/${idA}?tab=bets`, `/admin/players/${idA}?tab=activity`, `/admin/players/${idA}?tab=responsible`, "/admin/transactions", "/admin/transactions?kind=deposit&minAmount=1", "/admin/wallet", "/admin/bets", "/admin/bets?kind=sports&status=pending", "/admin/reports", "/admin/audit", "/admin/audit?severity=critical", "/admin/notifications", "/admin/settings", "/admin/security", "/admin/responsible-gambling"];
   bad = [];
   for (const route of adminPages) {
     const r = await html(admin, route);
@@ -890,6 +1035,8 @@ section("Pages render, and are protected");
   const missing = await html(guest, "/this-route-does-not-exist");
   check("unknown routes are 404", missing.status === 404);
   const dashboard = await html(admin, "/admin");
+  const lobby = await html(guest, "/games");
+  check("the games lobby has its filter bar, and no sign-up link anywhere on the site", /Rechercher un jeu|Search games/.test(lobby.body) && !/href="\/register"/.test((await html(guest, "/")).body + lobby.body));
   check("the dashboard shows real numbers, not placeholders", !dashboard.body.includes("Synthetic") && /Dépôts|Deposits/.test(dashboard.body));
 }
 
@@ -898,7 +1045,7 @@ section("Audit trail and reports");
   const logs = await admin.get(`/api/admin/audit-logs?player=${idA}&pageSize=100`);
   check("audit log is queryable by player", logs.status === 200 && logs.data.items.length > 0);
   const actions = new Set(logs.data.items.map((r: any) => r.action));
-  check("it records registration, wallet adjustments and withdrawal decisions", ["auth.register", "admin.wallet.adjusted", "admin.withdrawal.rejected"].every((a) => actions.has(a)), [...actions].join(","));
+  check("it records wallet adjustments and withdrawal decisions", ["admin.wallet.adjusted", "admin.withdrawal.rejected"].every((a) => actions.has(a)), [...actions].join(","));
   const byAdmin = await admin.get(`/api/admin/audit-logs?actor=${adminA.id}&action=admin.wallet.`);
   check("filterable by administrator and action prefix", byAdmin.status === 200 && byAdmin.data.items.every((r: any) => r.actorId === adminA.id && r.action.startsWith("admin.wallet.")));
   const bySeverity = await admin.get("/api/admin/audit-logs?severity=critical&pageSize=5");
@@ -928,9 +1075,9 @@ section("Notifications");
 {
   const mine = await playerA.get("/api/notifications");
   check("a player has their own notifications (balance updates)", mine.status === 200 && mine.data.some((n: any) => n.titleKey === "notify.balanceUpdated.title"));
-  check("a player's notifications are not an administrator's", !mine.data.some((n: any) => n.kind === "new_player"));
+  check("a player's notifications are not an administrator's", !mine.data.some((n: any) => n.kind === "withdrawal_request"));
   const adminNotes = await admin.get("/api/notifications");
-  check("administrators receive new-player and withdrawal alerts", adminNotes.data.some((n: any) => n.kind === "new_player") && adminNotes.data.some((n: any) => n.kind === "withdrawal_request"));
+  check("the superadmin receives withdrawal alerts", adminNotes.data.some((n: any) => n.kind === "withdrawal_request"));
 }
 
 console.log(`\n${failures === 0 ? "✓" : "✗"} ${checks - failures}/${checks} checks passed${failures ? ` — ${failures} FAILED` : ""}\n`);

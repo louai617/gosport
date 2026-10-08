@@ -3,11 +3,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ShieldOff } from "lucide-react";
 import { flattenParams, transactionListQuery } from "@/lib/adminQueries";
-import { formatAmount, formatDate, formatDateTime } from "@/lib/format";
+import { formatAmount, formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { getAdminT, getRequestLocale } from "@/i18n/server";
 import { requirePageAdmin } from "@/server/auth/pageGuard";
-import { can } from "@/server/auth/permissions";
+import { can, type Permission } from "@/server/auth/permissions";
 import { getSetting } from "@/server/settings/settingsService";
 import { getAdminTransactions } from "@/services/adminService";
 import { getAdminBets } from "@/services/bettingService";
@@ -16,12 +16,14 @@ import {
   getPlayerDetail,
   getPlayerResponsibleGaming,
 } from "@/services/playerAdminService";
+import { getOwnBalance } from "@/services/creditService";
 import { getPlayerWalletSummary } from "@/services/walletAdminService";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { StatTile } from "@/components/account/StatTile";
 import { AdjustmentForm } from "@/components/admin/AdjustmentForm";
 import { AdminBetsTable } from "@/components/admin/AdminBetsTable";
+import { CreditForm } from "@/components/admin/CreditForm";
 import { PlayerActions } from "@/components/admin/PlayerActions";
 import { KYC_TONE, PLAYER_STATUS_TONE } from "@/components/admin/tones";
 import { TransactionsList } from "@/components/wallet/TransactionsList";
@@ -29,8 +31,18 @@ import { TBody, TD, TH, THead, TR, Table, TableEmpty } from "@/components/ui/Tab
 
 export const metadata: Metadata = { title: "Player" };
 
-const TABS = ["overview", "wallet", "transactions", "bets", "activity", "responsible"] as const;
-type Tab = (typeof TABS)[number];
+const ALL_TABS = ["overview", "wallet", "transactions", "bets", "activity", "responsible"] as const;
+type Tab = (typeof ALL_TABS)[number];
+
+/** A tab is offered only to a role that may read what it shows; the services check again. */
+const TAB_PERMISSION: Record<Tab, Permission | null> = {
+  overview: null,
+  wallet: null,
+  transactions: "transactions.read",
+  bets: "bets.read",
+  activity: "audit.read",
+  responsible: "rg.read",
+};
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -41,6 +53,10 @@ export default async function AdminPlayerPage({ params, searchParams }: PageProp
   const [{ id }, rawParams] = await Promise.all([params, searchParams]);
   const user = await requirePageAdmin("players.read");
   const raw = flattenParams(rawParams);
+  const TABS = ALL_TABS.filter((value) => {
+    const needed = TAB_PERMISSION[value];
+    return needed === null || can(user.role, needed);
+  });
   const tab: Tab = (TABS as readonly string[]).includes(raw.tab ?? "") ? (raw.tab as Tab) : "overview";
 
   const [t, locale, player] = await Promise.all([getAdminT(), getRequestLocale(), getPlayerDetail(id)]);
@@ -51,6 +67,7 @@ export default async function AdminPlayerPage({ params, searchParams }: PageProp
     suspend: can(user.role, "players.suspend"),
     credentials: can(user.role, "players.credentials"),
     sessions: can(user.role, "players.sessions.revoke"),
+    lock: can(user.role, "players.lock"),
   };
 
   return (
@@ -74,7 +91,8 @@ export default async function AdminPlayerPage({ params, searchParams }: PageProp
             ) : null}
           </h1>
           <p className="mt-1 text-small text-ink-muted">
-            {player.displayName} · {player.email}
+            {player.displayName}
+            {player.managerUsername ? ` · ${t("admin.players.managedBy", { manager: player.managerUsername })}` : ""}
           </p>
           <p className="numeric mt-0.5 text-caption normal-case tracking-normal text-ink-subtle">
             {t("admin.players.id")}: {player.id}
@@ -119,14 +137,10 @@ export default async function AdminPlayerPage({ params, searchParams }: PageProp
             {[
               [t("admin.players.id"), player.id],
               [t("auth.field.username"), player.username],
-              [t("auth.field.email"), `${player.email}${player.emailVerifiedAt ? "" : ` · ${t("account.profile.unverified")}`}`],
-              [t("auth.field.phone"), player.phone ?? "—"],
-              [t("auth.field.firstName"), `${player.firstName} ${player.lastName}`],
-              [t("auth.field.country"), t(`countries.${player.countryCode}`)],
-              [t("auth.field.dateOfBirth"), player.dateOfBirth ? formatDate(player.dateOfBirth, locale) : "—"],
+              [t("account.profile.displayName"), player.displayName],
               [t("admin.column.registered"), formatDateTime(player.createdAt, locale)],
               [t("admin.column.lastSeen"), player.lastLoginAt ? formatDateTime(player.lastLoginAt, locale) : "—"],
-              [t("admin.players.createdBy"), player.createdBy ?? t("admin.players.selfRegistered")],
+              [t("admin.players.createdBy"), player.createdBy ?? "—"],
               [t("admin.players.activeSessions"), String(player.activeSessions)],
               [t("admin.players.failedLogins"), String(player.failedLoginCount)],
               [t("admin.players.mustChange"), player.mustChangePassword ? t("ui.yes") : t("ui.no")],
@@ -136,12 +150,14 @@ export default async function AdminPlayerPage({ params, searchParams }: PageProp
                 <dd className="numeric text-small font-medium text-ink">{value}</dd>
               </div>
             ))}
+            {user.role === "superadmin" ? (
             <div className="flex flex-wrap items-baseline justify-between gap-2 px-4 py-2.5">
               <dt className="text-small text-ink-muted">{t("admin.column.kyc")}</dt>
               <dd>
                 <Badge tone={KYC_TONE[player.kycStatus]}>{t(`admin.kyc.${player.kycStatus}`)}</Badge>
               </dd>
             </div>
+            ) : null}
             <div className="flex flex-wrap items-baseline justify-between gap-2 px-4 py-2.5">
               <dt className="text-small text-ink-muted">{t("admin.players.restrictions")}</dt>
               <dd className="text-small font-medium text-ink">
@@ -161,7 +177,13 @@ export default async function AdminPlayerPage({ params, searchParams }: PageProp
         </div>
       ) : null}
 
-      {tab === "wallet" ? <WalletTab playerId={id} username={player.username} canAdjust={can(user.role, "wallet.adjust")} /> : null}
+      {tab === "wallet" && can(user.role, "wallet.read") ? (
+        <WalletTab playerId={id} username={player.username} canAdjust={can(user.role, "wallet.adjust")} />
+      ) : null}
+
+      {tab === "wallet" && !can(user.role, "wallet.read") ? (
+        <SellCreditTab player={{ id: player.id, username: player.username, balance: player.balance }} />
+      ) : null}
 
       {tab === "transactions" ? <TransactionsTab playerId={id} raw={raw} /> : null}
 
@@ -225,6 +247,27 @@ async function WalletTab({ playerId, username, canAdjust }: { playerId: string; 
           />
         </section>
       ) : null}
+    </div>
+  );
+}
+
+/** A manager's wallet view of one of their players: the balance, and selling them credit. */
+async function SellCreditTab({ player }: { player: { id: string; username: string; balance: number } }) {
+  const [t, locale, actor] = await Promise.all([getAdminT(), getRequestLocale(), requirePageAdmin("credit.distribute")]);
+  const own = await getOwnBalance(actor);
+  const money = (value: number) => formatAmount(value, locale);
+
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <StatTile label={t("admin.credit.playerBalance")} value={money(player.balance)} tone="primary" />
+        <StatTile label={t("admin.credit.yourBalance")} value={money(own)} />
+      </div>
+      <section aria-labelledby="sell" className="rounded-xl border border-line bg-surface p-5">
+        <h2 id="sell" className="text-h3 text-ink">{t("admin.credit.sellTitle")}</h2>
+        <p className="mb-4 mt-1 text-small text-ink-muted">{t("admin.credit.sellBody")}</p>
+        <CreditForm mode="sell" accountId={player.id} username={player.username} balanceLabel={money(own)} />
+      </section>
     </div>
   );
 }

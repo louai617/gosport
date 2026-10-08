@@ -57,7 +57,6 @@ export const SETTING_DEFINITIONS = [
   { key: "general.maintenanceMode", group: "general", type: "boolean", default: false },
 
   /* players */
-  { key: "players.registrationEnabled", group: "players", type: "boolean", default: true },
   {
     key: "players.requireVerificationToWager",
     group: "players",

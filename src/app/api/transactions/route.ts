@@ -12,6 +12,7 @@ const KINDS = [
   "admin_credit",
   "admin_debit",
   "adjustment",
+  "credit_transfer",
 ] as const;
 
 const STATUSES = ["pending", "completed", "failed", "cancelled", "reversed"] as const;

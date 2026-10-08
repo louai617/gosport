@@ -37,13 +37,41 @@ export const PERMISSIONS = [
   "settings.update",
   "search.use",
   "rg.read",
+  "managers.read",
+  "managers.create",
+  "managers.update",
+  "credit.issue",
+  "credit.distribute",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
 
+/**
+ * A manager runs a book of players: creates their accounts, resets their
+ * passwords, suspends them and sells them credit out of the manager's own
+ * balance. Every one of these is further **scoped to the players that manager
+ * created** inside the service (`server/auth/scope.ts`) — the permission says
+ * the role may do the thing, the scope says to whom.
+ *
+ * `credit.distribute` is a manager's alone; `credit.issue` (minting credit onto
+ * a manager) is the superadmin's alone.
+ */
+const MANAGER_PERMISSIONS: readonly Permission[] = [
+  "admin.access",
+  "players.read",
+  "players.create",
+  "players.suspend",
+  "players.credentials",
+  "transactions.read",
+  "notifications.read",
+  "credit.distribute",
+];
+
 export const ROLE_PERMISSIONS: Readonly<Record<UserRole, ReadonlySet<Permission>>> = {
   player: new Set<Permission>(),
-  admin: new Set<Permission>(PERMISSIONS),
+  manager: new Set<Permission>(MANAGER_PERMISSIONS),
+  // Everything except the manager-only act of selling credit out of a balance.
+  superadmin: new Set<Permission>(PERMISSIONS.filter((p) => p !== "credit.distribute")),
 };
 
 export function can(role: UserRole, permission: Permission): boolean {

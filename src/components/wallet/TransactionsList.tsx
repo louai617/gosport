@@ -32,6 +32,7 @@ const KINDS: TransactionKind[] = [
   "admin_credit",
   "admin_debit",
   "adjustment",
+  "credit_transfer",
 ];
 
 const STATUSES: TransactionStatus[] = ["completed", "pending", "reversed", "failed", "cancelled"];

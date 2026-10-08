@@ -63,7 +63,7 @@ const REMEMBER_IDLE_SECONDS = 24 * 3600;
 const REMEMBER_ABSOLUTE_SECONDS = 7 * 24 * 3600;
 
 function lifetimes(role: SessionUser["role"], remember: boolean) {
-  if (role === "admin") {
+  if (role !== "player") {
     return {
       idle: env.ADMIN_SESSION_TTL_SECONDS,
       absolute: env.ADMIN_SESSION_ABSOLUTE_TTL_SECONDS,

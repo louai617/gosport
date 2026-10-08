@@ -4,7 +4,7 @@ SportGo is a Next.js 16 (App Router) application with player accounts, an
 administration console, a credit ledger, a sportsbook and eight casino games,
 backed by Prisma over SQLite (development) or PostgreSQL (production).
 
-> **Status.** Credits only; no payment provider, e-mail transport, automated KYC,
+> **Status.** Credits only; no payment provider, e-mail, automated KYC,
 > two-factor authentication or gambling licence. The **sportsbook catalogue**
 > (events, markets, odds, results) is a deterministic dataset in `src/data`
 > — it is not a live feed, and the admin console does not edit it. Everything
@@ -71,51 +71,75 @@ atomic debit, idempotent replay, and the audit row in the same transaction.
 
 | Flow | How it works |
 |---|---|
-| Credit | An administrator records an `ADMIN_CREDIT`/`DEPOSIT`/`BONUS` with a reason. Above `wallet.adjustmentApprovalThreshold` it becomes an `AdjustmentRequest` a *second* admin must approve. |
-| Debit / adjustment | Same path; cannot overdraw (guarded update + CHECK constraint). |
+| Issue credit | The superadmin credits a manager: one `ADMIN_CREDIT` entry (the only place credit is created). |
+| Sell credit | A manager sells to a player they created: a `CREDIT_TRANSFER` debit on the manager and a `DEPOSIT` credit on the player (linked by `relatedId`), one transaction, idempotent, subject to the player's deposit limits. The guarded debit means a manager cannot sell more than they hold. |
+| Manual adjustment | The superadmin can still record a credit or debit on a player with a reason; above `wallet.adjustmentApprovalThreshold` it becomes an `AdjustmentRequest` a *second* superadmin must approve. |
 | Withdrawal | The player requests → a `PENDING` `WITHDRAWAL` entry **holds** the funds. Admin approves (→ `COMPLETED`, the operator pays out of band) or rejects (→ `REVERSED` plus a `REFUND` entry referencing the original). A conditional claim prevents double processing. |
 | Sportsbook bet | `bettingService` re-prices from the dataset, snapshots `BetLeg`s, debits the stake, writes the ticket — one transaction. An admin settles per leg; `lib/settlement.ts` computes the result. |
 | Casino round | `server/casino/*` opens a `Bet(kind CASINO)`, debits, draws from the player's committed seed and settles/continues on the server (see `GAMES.md`). |
 
-Deposits initiated by the player are refused — there is no provider to take them.
+Deposits initiated by the player are refused — there is no provider to take them; credit reaches a player only through a manager (or a superadmin adjustment).
 
 ## 4. Accounts and access
 
+- **No sign-up, no e-mail.** Accounts have a username and a password only. A superadmin
+  creates managers; a manager creates players (`User.createdById`). The server generates the
+  username (unless one is chosen) and the password, shows the password **once**, stores
+  only its Argon2id hash and forces a change at first sign-in
+  (`services/accountService.ts`, `server/auth/credentials.ts`).
 - Sessions: opaque token in a cookie, HMAC stored in `Session`; idle and absolute
-  expiry, shorter for admins; revoke-all on credential change or suspension.
-- RBAC: `PLAYER` / `ADMIN`; the permission map is `server/auth/permissions.ts`.
+  expiry, shorter for staff; all of an account's sessions end when its password is regenerated
+  or it is suspended.
+- RBAC: `PLAYER` / `MANAGER` / `SUPERADMIN`; the permission map is
+  `server/auth/permissions.ts`, and **scope** (`server/auth/scope.ts`) restricts a manager to the
+  players they created. See `SECURITY.md` §3.
 - States: `PENDING · ACTIVE · SUSPENDED · LOCKED · SELF_EXCLUDED · CLOSED`, plus
   `wageringBlocked` / `withdrawalsBlocked` restrictions and a manual `kycStatus`.
 - Settings (`Setting` table, registry in `server/settings/registry.ts`): maintenance
-  mode, registration, verification-to-wager, transaction min/max, adjustment limits,
-  approval threshold, large-transaction alert, lockout, password policy and the
-  limit-increase cooling-off. Only settings the code **enforces** appear in the UI.
-  Reads are cached for 5 s and invalidated on write.
+  mode, verification-to-wager, transaction min/max, adjustment limits, approval threshold,
+  large-transaction alert, lockout, password policy and the limit-increase cooling-off. Only
+  settings the code **enforces** appear in the UI. Reads are cached for 5 s and invalidated
+  on write.
 
-## 5. Administration console (`/admin`)
+## 5. Operator console (`/admin`)
+
+The menu, the pages and the services are all filtered by role; the services are the authority.
+
+**Superadmin** — everything:
 
 | Area | Route | Notes |
 |---|---|---|
 | Dashboard | `/admin` | Period filter (today / 7 d / 30 d / month / last month / custom, in the market's time zone), KPIs, time series, ledger-integrity check, recent activity |
-| Players | `/admin/players`, `/new`, `/[id]` | Search, filter, sort, paginate; create (invitation link or temporary password); detail tabs: profile, wallet, transactions, bets, activity, responsible gambling; suspend, lock, restrict, verify, revoke sessions, issue reset link |
+| Managers | `/admin/managers`, `/new`, `/[id]` | Create (generated credentials, optional opening credit), issue credit, generate a new password, suspend/reactivate, recent movements, link to their players |
+| Players | `/admin/players`, `/new`, `/[id]` | All managers' players (filter by manager); detail tabs: overview, wallet, transactions, bets, activity, responsible gambling; suspend, lock, restrict, verify, revoke sessions, generate a new password |
 | Transactions | `/admin/transactions` | Filter by type, status, date, amount, player; CSV export |
 | Wallet | `/admin/wallet` | Adjustments, four-eyes approval queue, withdrawal queue |
 | Bets | `/admin/bets` | Sportsbook tickets and casino rounds; per-leg settlement |
 | Reports | `/admin/reports` | Deposits, withdrawals, bets, wins, net, active players; CSV |
 | Audit | `/admin/audit` | Filter by actor, target, action, severity, outcome, date; read-only |
-| Responsible gambling | `/admin/responsible-gambling` | Limits, exclusions, flagged players |
-| Notifications, Settings, Security | `/admin/notifications` … | Admin alerts; runtime settings; active admin sessions |
+| Responsible gambling, Notifications, Settings, Security | … | Oversight; alerts; runtime settings; sessions and password |
+
+**Manager** — their own book only:
+
+| Area | Route | Notes |
+|---|---|---|
+| Home | `/admin` | Balance (also pinned in the header), credit sold, players, recent movements |
+| Players | `/admin/players`, `/new`, `/[id]` | Only players they created; create (generated credentials, optional opening credit sold from their balance), sell credit, generate a new password, suspend/reactivate |
+| Transactions | `/admin/transactions` | Their own wallet's movements and their players' |
+| Notifications, Security | … | Their own |
 
 Charts are dependency-free SVG (`components/admin/charts`), coloured with the
-`--color-chart-*` tokens. Each admin screen is a Server Component that calls a
-service; forms use server actions with `useFormAction` (keeps fields on error,
-works without JS).
+`--color-chart-*` tokens. Each screen is a Server Component that calls a service;
+forms use server actions with `useFormAction` (keeps fields on error, works without JS).
+Credentials are shown by `CredentialsReveal` — read-only, copyable, with a "shown once" notice.
 
 ## 6. Player area
 
 `/account` (overview, bets, transactions, profile, security with active sessions,
 responsible-gambling limits, notifications) and `/wallet` (balance, history,
-withdraw; deposit explains that credit is recorded by the operator). The header's
+withdraw; deposit explains that credit is bought from the player's manager). The games lobby
+(`/games`) is one filter bar — search, category, playable-only, sort — above a single grid of
+every game, **most played first** (real round counts from the ledger). The header's
 balance comes from `WalletProvider`, which every casino board shares so one round's
 result updates the same number everywhere.
 

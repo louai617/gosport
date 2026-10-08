@@ -5,11 +5,12 @@ for a product that may lawfully take bets.
 
 ## What this build is
 
-A working platform on **demo credits**: player and administrator accounts, a
-credit ledger, a sportsbook and eight casino games that settle on the server,
-responsible-gambling controls enforced server-side, an administration console and
-an immutable audit trail. Accounts, balances, bets and transactions are real
-database records.
+A working platform on **demo credits**: a superadmin who creates managers and issues
+them credit, managers who create player accounts and sell them credit, a credit ledger,
+a sportsbook and eight casino games that settle on the server, responsible-gambling
+controls enforced server-side, an operator console and an immutable audit trail. Accounts,
+balances, bets and transactions are real database records. **There is no sign-up** — every
+account is created by the one above it.
 
 ## What this build is not
 
@@ -17,20 +18,20 @@ database records.
   jurisdiction. `compliance.licence` in `src/config/app.config.ts` is `null` and
   must stay null until a licence actually exists. No licence number, regulator
   name or certification mark appears anywhere in the codebase.
-- It does **not** verify anyone's age or identity. The registration form asks the
-  user to confirm they are of legal age — a self-declaration, as
-  `src/lib/validation.ts` says. `kycStatus` is a **manual decision by an
-  operator**; no provider is connected. It must never be presented as
-  verification.
-- It does **not** process payments. A player cannot deposit. An administrator
-  *records* credit (with a reason, audited, and above a threshold approved by a
-  second administrator); a withdrawal request holds the funds and an administrator
-  marks it paid after the operator has paid out of band. No provider credential
-  exists in the repo.
+- It does **not** verify anyone's age or identity. Accounts are created by a manager
+  or the superadmin, who is responsible for the holder being of legal age; the platform
+  records nothing but that the account exists. `kycStatus` is a **manual decision by an
+  operator**; no provider is connected. It must never be presented as verification.
+- It does **not** process payments. A player cannot deposit. Credit is *issued* by the
+  superadmin to a manager and *sold on* by the manager to a player — both audited, each
+  a ledger entry; how the buyer pays the manager is outside the platform. A withdrawal
+  request holds the funds and the superadmin marks it paid after the operator has paid
+  out of band. No provider credential exists in the repo.
 - It does **not** use a live odds feed. Events, markets and odds come from a
   deterministic dataset (`src/data`). Tickets are priced and settled on the server
-  from that dataset, and an administrator settles them per leg.
-- It has **no e-mail transport and no two-factor authentication**.
+  from that dataset, and the superadmin settles them per leg.
+- It collects **no e-mail address or phone number** and has **no two-factor
+  authentication**.
 - Every balance is demo credit and is labelled as such where it is displayed.
 
 ## Gates that must close before `NEXT_PUBLIC_APP_MODE=live`

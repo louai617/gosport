@@ -82,5 +82,9 @@
   "wallet.method.manual.name": "Paiement par l’opérateur",
   "wallet.method.manual.description": "Versé par l’opérateur hors plateforme",
   "wallet.processing.operator": "Après examen par l’opérateur",
-  "wallet.error.withdrawalsBlocked": "Les retraits sont bloqués sur ce compte. Contactez le support."
+  "wallet.error.withdrawalsBlocked": "Les retraits sont bloqués sur ce compte. Contactez le support.",
+  "wallet.tx.creditTransfer": "Crédit vendu à un joueur",
+  "wallet.tx.creditIssued": "Crédit du super administrateur",
+  "wallet.tx.creditFromManager": "Crédit de votre gestionnaire",
+  "wallet.kind.credit_transfer": "Crédit vendu"
 }

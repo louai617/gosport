@@ -258,13 +258,6 @@ export function BetSlip({ showHeader = true, className }: BetSlipProps) {
               >
                 {t("nav.login")}
               </Link>
-              {" · "}
-              <Link
-                href="/register"
-                className="font-semibold text-primary underline-offset-2 hover:underline"
-              >
-                {t("nav.register")}
-              </Link>
             </p>
             ) : null}
           </div>

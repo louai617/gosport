@@ -202,5 +202,20 @@
   "games.verify.rouletteResult": "The ball lands on {pocket}",
   "games.verify.blackjackResult": "First four cards dealt (you, dealer, you, dealer): {cards}",
   "casino.error.roundInProgress": "Finish your open round before changing your seed",
-  "casino.error.concurrentAction": "That round just changed — try again"
+  "casino.error.concurrentAction": "That round just changed — try again",
+  "games.plays": "{count} rounds played",
+  "games.filter.search": "Search games",
+  "games.filter.availability": "Availability",
+  "games.filter.allGames": "All games",
+  "games.filter.playable": "Playable now",
+  "games.filter.sort": "Sort by",
+  "games.filter.category": "Category",
+  "games.filter.all": "All",
+  "games.filter.results": "{count} games",
+  "games.filter.reset": "Clear filters",
+  "games.filter.empty": "No game matches these filters.",
+  "games.sort.plays": "Most played",
+  "games.sort.name": "Name (A–Z)",
+  "games.sort.rtp": "Highest return",
+  "games.sort.playsNote": "most played first"
 }

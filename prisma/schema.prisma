@@ -43,11 +43,14 @@ datasource db {
 // =============================================================================
 
 /// Roles are a column, not a join table: authorisation is one already-loaded
-/// field. To add a staff role (SUPPORT, TRADER, …) add a member here and a row
-/// in `ROLE_PERMISSIONS` (src/server/auth/permissions.ts) — nothing else moves.
+/// field. Accounts form a chain of ownership — a SUPERADMIN creates MANAGERs and
+/// issues them credit; a MANAGER creates PLAYERs (`User.createdById`) and sells
+/// them credit out of their own balance. To add a staff role add a member here
+/// and a row in `ROLE_PERMISSIONS` (src/server/auth/permissions.ts).
 enum Role {
   PLAYER
-  ADMIN
+  MANAGER
+  SUPERADMIN
 }
 
 enum UserStatus {
@@ -81,6 +84,8 @@ enum TransactionType {
   ADMIN_CREDIT
   ADMIN_DEBIT
   ADJUSTMENT
+  /// A manager's side of selling credit to a player (the player's side is a DEPOSIT).
+  CREDIT_TRANSFER
 }
 
 enum TransactionStatus {
@@ -160,25 +165,23 @@ model User {
   id                 String     @id @default(cuid())
   /// Stored lower-case. Unique.
   username           String     @unique
-  /// Stored lower-case. Unique.
-  email              String     @unique
-  phone              String?
   /// Argon2id PHC string. Never selected into a view model, never logged.
   passwordHash       String
   role               Role       @default(PLAYER)
   status             UserStatus @default(ACTIVE)
-  /// Forces a password change before anything else — set for the seeded admin
-  /// and for accounts created with an administrator-chosen password.
+  /// Forces a password change before anything else — set for the seeded
+  /// superadmin and for every account whose password was generated for it.
   mustChangePassword Boolean    @default(false)
   failedLoginCount   Int        @default(0)
   lockedUntil        DateTime?
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
   lastLoginAt        DateTime?
-  emailVerifiedAt    DateTime?
   suspendedAt        DateTime?
   suspendedReason    String?
-  /// The administrator who created the account, when it was not self-registered.
+  /// Who created the account — the manager a player belongs to, or the superadmin
+  /// a manager belongs to. Accounts are never self-registered. A manager can only
+  /// see and act on the players where this equals their own id.
   createdById        String?
 
   createdBy  User?  @relation("UserCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
@@ -203,15 +206,15 @@ model User {
   @@index([status])
   @@index([createdAt])
   @@index([lastLoginAt])
-  @@index([phone])
+  @@index([createdById])
 }
 
 model PlayerProfile {
   id                  String    @id @default(cuid())
   userId              String    @unique
   displayName         String
-  firstName           String
-  lastName            String
+  firstName           String    @default("")
+  lastName            String    @default("")
   /// Declared date of birth (UTC midnight). Stored only because an age gate is
   /// a legal requirement; it is a declaration, not a verification.
   dateOfBirth         DateTime?

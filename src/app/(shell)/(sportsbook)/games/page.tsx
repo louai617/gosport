@@ -1,17 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { PlugZap, ShieldCheck } from "lucide-react";
+import { PlugZap } from "lucide-react";
 import type { GameCategory } from "@/types/games";
-import {
-  getCategorySummaries,
-  getGames,
-  getProviders,
-} from "@/services/gamesService";
+import { getGamesByPlays, getProviders } from "@/services/gamesService";
 import { getT } from "@/i18n/server";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Section } from "@/components/layout/Section";
-import { GameCard } from "@/components/games/GameCard";
+import { GamesBrowser } from "@/components/games/GamesBrowser";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getT();
@@ -26,16 +22,22 @@ const CATEGORY_ORDER: GameCategory[] = [
   "game_shows",
 ];
 
-export default async function GamesPage() {
-  const [t, games, providers, categories] = await Promise.all([
+interface PageProps {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}
+
+export default async function GamesPage({ searchParams }: PageProps) {
+  const params = await searchParams;
+  const [t, { games, plays }, providers] = await Promise.all([
     getT(),
-    getGames(),
+    getGamesByPlays(),
     getProviders(),
-    getCategorySummaries(),
   ]);
 
-  const byCategory = (category: GameCategory) =>
-    games.filter((game) => game.category === category);
+  const requested = typeof params.category === "string" ? params.category : "all";
+  const initialCategory = (CATEGORY_ORDER as string[]).includes(requested)
+    ? (requested as GameCategory)
+    : "all";
 
   const playable = games.filter((game) => game.status === "playable");
 
@@ -54,62 +56,14 @@ export default async function GamesPage() {
         {t("games.lobbyNotice")}
       </Alert>
 
-      <div className="mt-4 flex flex-wrap gap-2">
-        {categories.map((summary) => (
-          <span
-            key={summary.category}
-            className="inline-flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1.5 text-small text-ink-muted"
-          >
-            {t(`games.category.${summary.category}`)}
-            <span className="numeric text-caption text-ink-subtle">
-              {summary.playable > 0
-                ? t("games.playableCount", {
-                    playable: summary.playable,
-                    total: summary.total,
-                  })
-                : summary.total}
-            </span>
-          </span>
-        ))}
+      <div className="mt-4">
+        <GamesBrowser
+          games={games}
+          plays={plays}
+          categories={CATEGORY_ORDER}
+          initialCategory={initialCategory}
+        />
       </div>
-
-      <Section
-        className="mt-8"
-        title={t("games.category.originals")}
-        description={t("games.originals.description")}
-        aside={
-          <span className="inline-flex items-center gap-1.5 text-small font-semibold text-success">
-            <ShieldCheck size={15} aria-hidden="true" />
-            {t("games.provablyFair.short")}
-          </span>
-        }
-      >
-        <div className="grid grid-cols-2 gap-3 @md:grid-cols-3 @2xl:grid-cols-4 @4xl:grid-cols-5">
-          {byCategory("originals").map((game) => (
-            <GameCard key={game.id} game={game} />
-          ))}
-        </div>
-      </Section>
-
-      {CATEGORY_ORDER.filter((category) => category !== "originals").map((category) => {
-        const entries = byCategory(category);
-        if (entries.length === 0) return null;
-
-        return (
-          <Section
-            key={category}
-            className="mt-8"
-            title={t(`games.category.${category}`)}
-            description={t("games.providerSection.description")}
-          >
-            <div className="grid grid-cols-2 gap-3 @md:grid-cols-3 @2xl:grid-cols-4 @4xl:grid-cols-5">
-              {entries.map((game) => (
-                <GameCard key={game.id} game={game} />
-              ))}
-            </div>
-          </Section>
-        );
-      })}
 
       {/* ------------------------------------------------------- providers -- */}
       <Section

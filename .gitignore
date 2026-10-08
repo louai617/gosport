@@ -24,3 +24,6 @@ coverage
 !.env.example
 
 /dev.db*
+
+# Local hand-over of test accounts (see docs/DEPLOYMENT.md)
+/dev-credentials.local.txt

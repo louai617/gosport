@@ -26,12 +26,10 @@ export default async function ResetPasswordPage({ searchParams }: PageProps) {
   const token = typeof params.token === "string" ? params.token : "";
   const [t, inspection] = await Promise.all([getT(), inspectPasswordToken(token)]);
 
-  const invitation = inspection.purpose === "INVITATION";
-
   return (
     <AuthShell
-      title={invitation ? t("auth.invite.title") : t("auth.reset.title")}
-      description={invitation ? t("auth.invite.description") : t("auth.reset.description")}
+      title={t("auth.reset.title")}
+      description={t("auth.reset.description")}
       footer={
         <Link href="/login" className="font-semibold text-primary underline-offset-2 hover:underline">
           {t("auth.forgot.backToLogin")}
@@ -42,10 +40,7 @@ export default async function ResetPasswordPage({ searchParams }: PageProps) {
         <ResetPasswordForm token={token} />
       ) : (
         <Alert tone="danger" title={t("auth.reset.invalidTitle")}>
-          {t("auth.reset.invalidBody")}{" "}
-          <Link href="/forgot-password" className="font-semibold underline underline-offset-2">
-            {t("auth.login.forgot")}
-          </Link>
+          {t("auth.reset.invalidBody")}
         </Alert>
       )}
     </AuthShell>

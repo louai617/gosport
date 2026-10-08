@@ -3,6 +3,7 @@ import "server-only";
 
 import { prisma } from "@/server/db";
 import { requirePermission } from "@/server/auth/guard";
+import { managedPlayerWhere } from "@/server/auth/scope";
 import { listAdminTransactions, type TransactionQueryInput } from "@/server/repositories/transactionRepository";
 import { clampPage, cleanSearch } from "@/server/repositories/filters";
 import type { AdminTransaction, Paginated, TransactionKind, TransactionStatus } from "@/types";
@@ -34,10 +35,15 @@ export interface AdminTransactionQuery {
 export async function getAdminTransactions(
   query: AdminTransactionQuery = {},
 ): Promise<Paginated<AdminTransaction>> {
-  await requirePermission("transactions.read");
+  const actor = await requirePermission("transactions.read");
 
   const input: TransactionQueryInput = {
     ...query,
+    // A manager sees their own wallet's movements and their players' — nobody else's.
+    userScope:
+      actor.role === "manager"
+        ? { OR: [{ id: actor.id }, managedPlayerWhere(actor)] }
+        : undefined,
     kinds: query.kind === undefined ? undefined : Array.isArray(query.kind) ? query.kind : [query.kind],
     statuses:
       query.status === undefined ? undefined : Array.isArray(query.status) ? query.status : [query.status],

@@ -2,13 +2,7 @@ import { z } from "zod";
 
 import {
   amountSchema,
-  countrySchema,
   displayNameSchema,
-  emailSchema,
-  localeSchema,
-  nameSchema,
-  passwordSchema,
-  phoneSchema,
   usernameSchema,
 } from "@/lib/validation";
 
@@ -91,58 +85,65 @@ export const decisionSchema = z.object({
   note: freeText(0, 300, "admin.validation.reasonRequired").optional(),
 });
 
-export const createPlayerSchema = z
-  .object({
-    username: usernameSchema,
-    email: emailSchema,
-    phone: z
-      .string()
-      .trim()
-      .optional()
-      .transform((value) => (value ? value : undefined))
-      .pipe(phoneSchema.optional()),
-    firstName: nameSchema,
-    lastName: nameSchema,
-    country: countrySchema,
-    locale: localeSchema.default("fr"),
-    credentialMode: z.enum(["invitation", "password"], {
-      message: "admin.validation.credentialModeInvalid",
-    }),
-    /** Only read when `credentialMode` is "password". */
-    temporaryPassword: z.string().optional(),
-  })
-  .superRefine((value, ctx) => {
-    if (value.credentialMode !== "password") return;
-    const parsed = passwordSchema.safeParse(value.temporaryPassword ?? "");
-    if (!parsed.success) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["temporaryPassword"],
-        message: parsed.error.issues[0]?.message ?? "auth.validation.passwordRequired",
-      });
-    }
-  });
+/**
+ * Creating an account. The operator supplies, at most, a label and — for a
+ * manager — an opening amount of credit; the username and password are
+ * **generated** by the server and shown once. A custom username is allowed
+ * (e.g. a shop's own naming), but never a custom password.
+ */
+const optionalUsername = z
+  .string()
+  .trim()
+  .optional()
+  .transform((value) => (value ? value : undefined))
+  .pipe(usernameSchema.optional());
+
+const optionalLabel = z
+  .string()
+  .trim()
+  .optional()
+  .transform((value) => (value ? value : undefined))
+  .pipe(displayNameSchema.optional());
+
+const optionalAmount = z
+  .union([z.string(), z.number(), z.undefined()])
+  .transform((value) => (value === "" || value === undefined ? undefined : value))
+  .pipe(amountSchema.optional());
+
+export const createPlayerSchema = z.object({
+  username: optionalUsername,
+  displayName: optionalLabel,
+  /** Credit sold to the player out of the manager's own balance, in one step. */
+  initialCredit: optionalAmount,
+  idempotencyKey,
+});
 
 export type CreatePlayerInput = z.infer<typeof createPlayerSchema>;
 
-export const updatePlayerSchema = z.object({
-  playerId: idSchema,
-  email: emailSchema,
-  phone: z
-    .string()
-    .trim()
-    .optional()
-    .transform((value) => (value ? value : undefined))
-    .pipe(phoneSchema.optional()),
-  firstName: nameSchema,
-  lastName: nameSchema,
-  displayName: displayNameSchema,
-  country: countrySchema,
-  locale: localeSchema,
-  reason: reasonSchema,
+export const createManagerSchema = z.object({
+  username: optionalUsername,
+  displayName: optionalLabel,
+  /** Credit the superadmin issues to the new manager, in one step. */
+  initialCredit: optionalAmount,
+  idempotencyKey,
 });
 
-export type UpdatePlayerInput = z.infer<typeof updatePlayerSchema>;
+export type CreateManagerInput = z.infer<typeof createManagerSchema>;
+
+export const creditSchema = z.object({
+  /** The account receiving credit: a player (from a manager) or a manager (from the superadmin). */
+  accountId: idSchema,
+  amount: amountSchema,
+  note: freeText(0, 200, "admin.validation.reasonRequired").optional(),
+  idempotencyKey,
+});
+
+export type CreditInput = z.infer<typeof creditSchema>;
+
+export const resetCredentialsSchema = z.object({
+  accountId: idSchema,
+  confirm: z.literal(true, { message: "admin.validation.confirmRequired" }),
+});
 
 export const playerActionSchema = z.object({
   playerId: idSchema,

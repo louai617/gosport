@@ -6,7 +6,6 @@ import { formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { getAdminT, getRequestLocale } from "@/i18n/server";
 import { requirePageAdmin } from "@/server/auth/pageGuard";
-import { activeTransportId } from "@/server/notifications/transport";
 import { configuredChannels } from "@/server/notifications/notify";
 import { getNotifications } from "@/services/notificationService";
 import { Alert } from "@/components/ui/Alert";
@@ -34,7 +33,6 @@ export default async function AdminNotificationsPage() {
             <Badge key={channel} tone="success">{channel}</Badge>
           ))}
           <span>{t("admin.notifications.channelsNote")}</span>
-          {activeTransportId() ? <Badge tone="warning">{activeTransportId()}</Badge> : null}
         </span>
       </Alert>
 

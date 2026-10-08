@@ -56,7 +56,7 @@
   "account.profile.personal": "Personal details",
   "account.profile.preferences": "Preferences",
   "account.profile.memberSince": "Member since {date}",
-  "account.profile.saveNotice": "Name, date of birth and e-mail can only be changed by support, with a reason on record.",
+  "account.profile.saveNotice": "Your username and the rest of your account are managed by your manager.",
   "account.profile.verified": "Verified",
   "account.profile.unverified": "Not verified",
   "account.security.title": "Security",
@@ -120,5 +120,9 @@
   "account.security.revokeOthers": "Sign out of all other devices",
   "account.security.sessionRevoked": "That device was signed out",
   "account.security.otherSessionsRevoked": "All other devices were signed out",
-  "account.error.wageringBlocked": "Betting is blocked on this account. Contact support."
+  "account.error.wageringBlocked": "Betting is blocked on this account. Contact support.",
+  "notify.creditReceived.title": "Credit received",
+  "notify.creditReceived.body": "{amount} TND of credit was added to your balance.",
+  "notify.creditFromManager.title": "Credit added",
+  "notify.creditFromManager.body": "Your manager added {amount} TND to your balance."
 }

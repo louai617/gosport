@@ -5,6 +5,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { can, type Permission } from "@/server/auth/permissions";
 import { getSessionUser } from "@/server/auth/guard";
+import { PASSWORD_CHANGE_BY_ROLE } from "@/server/auth/roles";
 import type { SessionUser } from "@/types/user";
 
 /**
@@ -16,10 +17,6 @@ import type { SessionUser } from "@/types/user";
  * behind a page checks `requirePermission` itself.
  */
 
-const PASSWORD_CHANGE_PATH = {
-  player: "/account/security",
-  admin: "/admin/security",
-} as const;
 
 async function currentPath(): Promise<string> {
   return (await headers()).get("x-pathname") ?? "/";
@@ -32,7 +29,7 @@ function loginUrl(next: string): string {
 /** A signed-in account that still holds an initial password may only change it. */
 async function enforcePasswordChange(user: SessionUser): Promise<void> {
   if (!user.mustChangePassword) return;
-  const target = PASSWORD_CHANGE_PATH[user.role];
+  const target = PASSWORD_CHANGE_BY_ROLE[user.role];
   if ((await currentPath()) !== target) redirect(`${target}?forced=1`);
 }
 

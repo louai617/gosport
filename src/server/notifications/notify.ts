@@ -27,7 +27,8 @@ export type NotificationKind =
   | "approval_request"
   | "security"
   | "admin_action"
-  | "match_starting";
+  | "match_starting"
+  | "credit";
 
 export interface NotificationInput {
   kind: NotificationKind;
@@ -41,7 +42,8 @@ export interface NotificationInput {
 }
 
 export interface DeliveredNotification extends Omit<NotificationInput, "tx"> {
-  recipient: { id: string; email: string; phone: string | null; locale: string };
+  /** No contact details: accounts have a username and password only. */
+  recipient: { id: string; username: string; locale: string };
 }
 
 /** Contract for an external delivery channel. */
@@ -82,7 +84,7 @@ async function fanOut(recipientIds: string[], input: NotificationInput): Promise
 
   const recipients = await db.user.findMany({
     where: { id: { in: recipientIds } },
-    select: { id: true, email: true, phone: true, profile: { select: { locale: true } } },
+    select: { id: true, username: true, profile: { select: { locale: true } } },
   });
 
   for (const recipient of recipients) {
@@ -96,8 +98,7 @@ async function fanOut(recipientIds: string[], input: NotificationInput): Promise
           href: input.href,
           recipient: {
             id: recipient.id,
-            email: recipient.email,
-            phone: recipient.phone,
+            username: recipient.username,
             locale: recipient.profile?.locale ?? "fr",
           },
         })
@@ -110,14 +111,14 @@ export async function notifyUser(userId: string, input: NotificationInput): Prom
   await fanOut([userId], input);
 }
 
-/** One notification per active administrator, so read state needs no join table. */
+/** One notification per active superadmin, so read state needs no join table. */
 export async function notifyAdmins(
   input: NotificationInput,
   options: { exceptUserId?: string } = {},
 ): Promise<void> {
   const admins = await (input.tx ?? prisma).user.findMany({
     where: {
-      role: "ADMIN",
+      role: "SUPERADMIN",
       status: "ACTIVE",
       ...(options.exceptUserId ? { NOT: { id: options.exceptUserId } } : {}),
     },

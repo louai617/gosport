@@ -3,26 +3,22 @@
 import { redirect } from "next/navigation";
 
 import type { ActionState } from "@/lib/actionState";
+import type { UserRole } from "@/types/user";
 import {
   changePasswordSchema,
-  forgotPasswordSchema,
   loginSchema,
-  registerSchema,
   resetPasswordSchema,
 } from "@/lib/validation";
 import { env } from "@/server/env";
 import { guarded, limitAction, readBoolean, text, zodFieldErrors } from "@/server/actions";
 import { getSessionUser } from "@/server/auth/guard";
-import { issueSession } from "@/server/auth/session";
+import { HOME_BY_ROLE, PASSWORD_CHANGE_BY_ROLE, isStaff } from "@/server/auth/roles";
 import { safeRedirect } from "@/server/security/sanitize";
-import { getRequestMeta } from "@/server/security/requestMeta";
 import {
   changeOwnPassword,
   completePasswordReset,
   loginUser,
   logoutUser,
-  registerPlayer,
-  requestPasswordReset,
   revokeOtherSessions,
   revokeOwnSession,
 } from "@/services/authService";
@@ -33,12 +29,12 @@ import {
  * lockout, enumeration resistance, session rotation — lives in the service.
  */
 
-function landingFor(role: "player" | "admin", next: string | null): string {
-  const fallback = role === "admin" ? "/admin" : "/account";
+function landingFor(role: UserRole, next: string | null): string {
+  const fallback = HOME_BY_ROLE[role];
   const target = safeRedirect(next, env.APP_URL, fallback);
-  // A player must not be bounced into the admin console, nor an admin into a
+  // A player must not be bounced into the operator console, nor staff into a
   // dead end — an out-of-role `next` falls back to the role's home.
-  if (role === "player" && target.startsWith("/admin")) return fallback;
+  if (!isStaff(role) && target.startsWith("/admin")) return fallback;
   return target;
 }
 
@@ -58,64 +54,9 @@ export async function loginAction(_previous: ActionState, formData: FormData): P
     if (!result.ok) return { ok: false, messageKey: result.errorKey };
 
     if (result.user.mustChangePassword) {
-      redirect(result.user.role === "admin" ? "/admin/security?forced=1" : "/account/security?forced=1");
+      redirect(`${PASSWORD_CHANGE_BY_ROLE[result.user.role]}?forced=1`);
     }
     redirect(landingFor(result.user.role, text(formData, "next") || null));
-  });
-}
-
-export async function registerAction(
-  _previous: ActionState,
-  formData: FormData,
-): Promise<ActionState> {
-  return guarded("auth.register", async () => {
-    const parsed = registerSchema.safeParse({
-      username: text(formData, "username"),
-      firstName: text(formData, "firstName"),
-      lastName: text(formData, "lastName"),
-      email: text(formData, "email"),
-      phone: text(formData, "phone"),
-      password: text(formData, "password"),
-      confirmPassword: text(formData, "confirmPassword"),
-      dateOfBirth: text(formData, "dateOfBirth"),
-      country: text(formData, "country"),
-      ageConfirmed: readBoolean(formData.get("ageConfirmed")),
-      termsAccepted: readBoolean(formData.get("termsAccepted")),
-      marketingOptIn: readBoolean(formData.get("marketingOptIn")),
-    });
-    if (!parsed.success) return { ok: false, fieldErrors: zodFieldErrors(parsed.error) };
-
-    const limited = await limitAction("register");
-    if (limited) return limited;
-
-    const result = await registerPlayer(parsed.data);
-    if (!result.ok) {
-      return { ok: false, messageKey: result.errorKey, fieldErrors: result.fieldErrors };
-    }
-
-    // Signed in straight away: the account exists, and there is no e-mail
-    // transport to gate it on. It is still unverified — see `kycStatus`.
-    const meta = await getRequestMeta();
-    await issueSession(result.user, { ipHash: meta.ipHash, userAgent: meta.userAgent });
-    redirect("/account");
-  });
-}
-
-export async function forgotPasswordAction(
-  _previous: ActionState,
-  formData: FormData,
-): Promise<ActionState> {
-  return guarded("auth.forgot", async () => {
-    const parsed = forgotPasswordSchema.safeParse({ email: text(formData, "email") });
-    if (!parsed.success) return { ok: false, fieldErrors: zodFieldErrors(parsed.error) };
-
-    const limited = await limitAction("passwordReset", parsed.data.email);
-    if (limited) return limited;
-
-    await requestPasswordReset(parsed.data.email);
-    // One answer for every address — a different reply per address would let
-    // anyone enumerate accounts.
-    return { ok: true, messageKey: "auth.forgot.submitted" };
   });
 }
 
@@ -167,7 +108,7 @@ export async function changePasswordAction(
     }
     // A forced change is the only thing standing between the account and the
     // rest of the app; once done, go there.
-    if (user?.mustChangePassword) redirect(user.role === "admin" ? "/admin" : "/account");
+    if (user?.mustChangePassword) redirect(HOME_BY_ROLE[user.role]);
     return { ok: true, messageKey: "account.security.passwordChanged" };
   });
 }

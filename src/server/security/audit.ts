@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 
 import { prisma, type DbClient } from "@/server/db";
 import { env, isDemo } from "@/server/env";
+import { roleToDb } from "@/server/auth/roles";
 import { redact } from "@/server/security/redact";
 import type { UserRole } from "@/types/user";
 
@@ -32,12 +33,10 @@ export { redact, hashEmail, maskPhone } from "@/server/security/redact";
 
 export type AuditAction =
   /* authentication */
-  | "auth.register"
   | "auth.login"
   | "auth.login_failed"
   | "auth.logout"
   | "auth.account_locked"
-  | "auth.password_reset_requested"
   | "auth.password_reset_completed"
   | "auth.password_changed"
   | "auth.session_revoked"
@@ -66,8 +65,11 @@ export type AuditAction =
   | "admin.player.restrictions_changed"
   | "admin.player.verification_changed"
   | "admin.player.sessions_revoked"
-  | "admin.player.invitation_created"
   | "admin.player.reset_link_created"
+  | "admin.manager.created"
+  | "admin.account.credentials_reset"
+  | "admin.credit.issued"
+  | "admin.credit.sold"
   | "admin.wallet.adjusted"
   | "admin.wallet.adjustment_requested"
   | "admin.wallet.adjustment_approved"
@@ -99,7 +101,6 @@ const SEVERITY: Partial<Record<AuditAction, AuditSeverity>> = {
   "admin.player.restrictions_changed": "warning",
   "admin.player.verification_changed": "warning",
   "admin.player.sessions_revoked": "warning",
-  "admin.player.invitation_created": "warning",
   "admin.withdrawal.rejected": "warning",
   "admin.wallet.adjustment_rejected": "warning",
   "admin.settings.updated": "warning",
@@ -112,6 +113,10 @@ const SEVERITY: Partial<Record<AuditAction, AuditSeverity>> = {
   "admin.wallet.adjustment_approved": "critical",
   "admin.withdrawal.approved": "critical",
   "admin.player.reset_link_created": "critical",
+  "admin.account.credentials_reset": "critical",
+  "admin.credit.issued": "critical",
+  "admin.credit.sold": "warning",
+  "admin.manager.created": "warning",
   "admin.bet.settled": "critical",
   "system.error": "critical",
 };
@@ -252,7 +257,7 @@ async function persist(db: DbClient, record: Normalised): Promise<void> {
       outcome: toDb.outcome[record.outcome],
       severity: toDb.severity[record.severity],
       actorId: record.actorId,
-      actorRole: record.actorRole === "admin" ? "ADMIN" : record.actorRole === "player" ? "PLAYER" : null,
+      actorRole: record.actorRole ? roleToDb(record.actorRole) : null,
       targetUserId: record.targetUserId,
       targetType: record.targetType,
       targetId: record.targetId,

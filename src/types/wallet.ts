@@ -46,7 +46,8 @@ export type TransactionKind =
   | "bonus"
   | "admin_credit"
   | "admin_debit"
-  | "adjustment";
+  | "adjustment"
+  | "credit_transfer";
 
 export type TransactionStatus = "pending" | "completed" | "failed" | "cancelled" | "reversed";
 

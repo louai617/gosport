@@ -3,6 +3,7 @@ import "server-only";
 import { JURISDICTION } from "@/config/app.config";
 import { prisma } from "@/server/db";
 import { getSessionUser, requireUser } from "@/server/auth/guard";
+import { roleFromDb } from "@/server/auth/roles";
 import { audit } from "@/server/security/audit";
 import type { Favorite, FavoriteKind, SessionUser, User } from "@/types";
 import { getBets } from "./bettingService";
@@ -43,13 +44,11 @@ export async function getUserProfile(): Promise<User> {
     id: row.id,
     username: row.username,
     displayName: row.profile?.displayName ?? row.username,
-    email: row.email,
     firstName: row.profile?.firstName ?? "",
     lastName: row.profile?.lastName ?? "",
-    phone: row.phone ?? "",
     dateOfBirth: row.profile?.dateOfBirth?.toISOString().slice(0, 10) ?? "",
     countryCode: row.profile?.countryCode ?? JURISDICTION.code,
-    role: row.role === "ADMIN" ? "admin" : "player",
+    role: roleFromDb(row.role),
     status: user.status,
     kycStatus: user.kycStatus,
     ageDeclaredAt: row.profile?.ageDeclaredAt?.toISOString() ?? null,
@@ -57,8 +56,6 @@ export async function getUserProfile(): Promise<User> {
     createdAt: row.createdAt.toISOString(),
     lastLoginAt: row.lastLoginAt?.toISOString() ?? null,
     twoFactorEnabled: false,
-    emailVerified: row.emailVerifiedAt !== null,
-    phoneVerified: false,
   };
 }
 
@@ -114,7 +111,6 @@ export async function updateOwnProfile(input: unknown): Promise<ProfileUpdateRes
   await prisma.user.update({
     where: { id: user.id },
     data: {
-      phone: parsed.data.phone,
       profile: { update: { displayName: parsed.data.displayName } },
     },
   });
@@ -122,7 +118,7 @@ export async function updateOwnProfile(input: unknown): Promise<ProfileUpdateRes
     action: "player.profile_updated",
     actor: user,
     targetUserId: user.id,
-    description: `${user.username} updated their phone and display name`,
+    description: `${user.username} updated their display name`,
   });
   return { ok: true };
 }

@@ -43,7 +43,7 @@ const LINKS = [
 export function AccountMenu({ user }: AccountMenuProps) {
   const t = useT();
   const fullName = user.displayName || `${user.firstName} ${user.lastName}`.trim();
-  const isAdmin = user.role === "admin";
+  const isAdmin = user.role !== "player";
 
   return (
     <Dropdown

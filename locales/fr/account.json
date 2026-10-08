@@ -56,7 +56,7 @@
   "account.profile.personal": "Informations personnelles",
   "account.profile.preferences": "Préférences",
   "account.profile.memberSince": "Membre depuis le {date}",
-  "account.profile.saveNotice": "Le nom, la date de naissance et l’e-mail ne peuvent être modifiés que par le support, avec un motif enregistré.",
+  "account.profile.saveNotice": "Votre nom d’utilisateur et le reste de votre compte sont gérés par votre gestionnaire.",
   "account.profile.verified": "Vérifié",
   "account.profile.unverified": "Non vérifié",
   "account.security.title": "Sécurité",
@@ -120,5 +120,9 @@
   "account.security.revokeOthers": "Déconnecter tous les autres appareils",
   "account.security.sessionRevoked": "Cet appareil a été déconnecté",
   "account.security.otherSessionsRevoked": "Tous les autres appareils ont été déconnectés",
-  "account.error.wageringBlocked": "Les paris sont bloqués sur ce compte. Contactez le support."
+  "account.error.wageringBlocked": "Les paris sont bloqués sur ce compte. Contactez le support.",
+  "notify.creditReceived.title": "Crédit reçu",
+  "notify.creditReceived.body": "{amount} TND de crédit ont été ajoutés à votre solde.",
+  "notify.creditFromManager.title": "Crédit ajouté",
+  "notify.creditFromManager.body": "Votre gestionnaire a ajouté {amount} TND à votre solde."
 }

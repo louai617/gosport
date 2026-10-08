@@ -18,16 +18,19 @@ export interface PlayersTableProps {
     status?: string;
     kycStatus?: string;
     restricted?: string;
+    manager?: string;
     from?: string;
     to?: string;
     sort?: string;
     direction?: "asc" | "desc";
   };
   canCreate: boolean;
+  /** Superadmin: show which manager each player belongs to, and the verification column/filter. */
+  oversight: boolean;
 }
 
 /** The player table: search, status/verification/restriction filters, date range, sorting, paging. */
-export function PlayersTable({ data, params, canCreate }: PlayersTableProps) {
+export function PlayersTable({ data, params, canCreate, oversight }: PlayersTableProps) {
   const { t, locale } = useI18n();
 
   const columns: DataTableColumn<PlayerRow>[] = [
@@ -39,7 +42,7 @@ export function PlayersTable({ data, params, canCreate }: PlayersTableProps) {
         <Link href={`/admin/players/${row.id}`} className="block min-w-0 max-w-64 hover:underline">
           <span className="block truncate font-medium text-ink">{row.username}</span>
           <span className="block truncate text-caption normal-case tracking-normal text-ink-subtle">
-            {row.displayName} · {row.email}
+            {row.displayName}
           </span>
         </Link>
       ),
@@ -62,12 +65,31 @@ export function PlayersTable({ data, params, canCreate }: PlayersTableProps) {
         </span>
       ),
     },
-    {
-      key: "kycStatus",
-      header: t("admin.column.kyc"),
-      secondary: true,
-      render: (row) => <Badge tone={KYC_TONE[row.kycStatus]}>{t(`admin.kyc.${row.kycStatus}`)}</Badge>,
-    },
+    ...(oversight
+      ? [
+          {
+            key: "manager",
+            header: t("admin.column.manager"),
+            secondary: true,
+            render: (row: PlayerRow) =>
+              row.managerId ? (
+                <Link href={`/admin/managers/${row.managerId}`} className="hover:underline">
+                  {row.managerUsername}
+                </Link>
+              ) : (
+                "—"
+              ),
+          },
+          {
+            key: "kycStatus",
+            header: t("admin.column.kyc"),
+            secondary: true,
+            render: (row: PlayerRow) => (
+              <Badge tone={KYC_TONE[row.kycStatus]}>{t(`admin.kyc.${row.kycStatus}`)}</Badge>
+            ),
+          },
+        ]
+      : []),
     {
       key: "balance",
       header: t("admin.column.balance"),
@@ -115,21 +137,25 @@ export function PlayersTable({ data, params, canCreate }: PlayersTableProps) {
             (value) => ({ value, label: t(`admin.userStatus.${value}`) }),
           ),
         },
-        {
-          param: "kycStatus",
-          label: t("admin.column.kyc"),
-          value: params.kycStatus,
-          options: (["not_started", "pending", "verified", "rejected", "expired"] as const).map((value) => ({
-            value,
-            label: t(`admin.kyc.${value}`),
-          })),
-        },
-        {
-          param: "restricted",
-          label: t("admin.players.restrictions"),
-          value: params.restricted,
-          options: [{ value: "true", label: t("admin.players.restricted") }],
-        },
+        ...(oversight
+          ? [
+              {
+                param: "kycStatus",
+                label: t("admin.column.kyc"),
+                value: params.kycStatus,
+                options: (["not_started", "pending", "verified", "rejected", "expired"] as const).map((value) => ({
+                  value,
+                  label: t(`admin.kyc.${value}`),
+                })),
+              },
+              {
+                param: "restricted",
+                label: t("admin.players.restrictions"),
+                value: params.restricted,
+                options: [{ value: "true", label: t("admin.players.restricted") }],
+              },
+            ]
+          : []),
       ]}
       inputs={[
         { param: "from", label: t("admin.players.registeredFrom"), type: "date", value: params.from },

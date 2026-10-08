@@ -82,5 +82,9 @@
   "wallet.method.manual.name": "دفع عبر المشغّل",
   "wallet.method.manual.description": "يدفعه لك المشغّل خارج المنصة",
   "wallet.processing.operator": "بعد مراجعة المشغّل",
-  "wallet.error.withdrawalsBlocked": "السحب محظور على هذا الحساب. تواصل مع الدعم."
+  "wallet.error.withdrawalsBlocked": "السحب محظور على هذا الحساب. تواصل مع الدعم.",
+  "wallet.tx.creditTransfer": "رصيد مُباع للاعب",
+  "wallet.tx.creditIssued": "رصيد من المشرف العام",
+  "wallet.tx.creditFromManager": "رصيد من مديرك",
+  "wallet.kind.credit_transfer": "رصيد مُباع"
 }

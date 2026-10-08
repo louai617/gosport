@@ -2,7 +2,6 @@ import { z } from "zod";
 
 import {
   BETTING_RULES,
-  JURISDICTION,
 } from "@/config/app.config";
 import { LOCALES } from "@/i18n/config";
 import type { ApiFieldError } from "@/types/api";
@@ -33,10 +32,6 @@ const UNSAFE_TEXT =
 /** Letters (any script, so Arabic and accented Latin both pass), marks, spacing. */
 const NAME_PATTERN = /^[\p{L}\p{M}][\p{L}\p{M} '\u2019.-]{0,62}[\p{L}\p{M}.]$/u;
 
-const PHONE_NATIONAL = new RegExp(JURISDICTION.phonePattern);
-
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-
 /**
  * The most-abused passwords, kept short and lowercase-compared. This is a
  * floor, not a control: production must check the candidate against a breach
@@ -64,16 +59,6 @@ const CLASS_SYMBOL = /[^\p{L}\p{N}]/u;
 /* ========================================================================== */
 /* identity                                                                   */
 /* ========================================================================== */
-
-export const emailSchema = z
-  .string({ message: "auth.validation.emailRequired" })
-  .trim()
-  .toLowerCase()
-  // RFC 5321 caps the whole address at 254 octets; anything longer is abuse.
-  .max(254, { message: "auth.validation.emailTooLong" })
-  .pipe(z.email({ message: "auth.validation.emailInvalid" }));
-
-export type Email = z.infer<typeof emailSchema>;
 
 /** Names that would let an account pass for the platform or its staff. */
 const RESERVED_USERNAMES: ReadonlySet<string> = new Set([
@@ -137,83 +122,6 @@ export const nameSchema = z
   );
 
 export type Name = z.infer<typeof nameSchema>;
-
-/**
- * Accepts what people actually type — `20 123 456`, `+216 20 123 456`,
- * `00216-20-123-456` — and always stores E.164. Validation runs against the
- * jurisdiction's national pattern, so re-pointing the app at another market is
- * a config change, not a code change.
- */
-function toNationalNumber(raw: string): string {
-  const digits = raw.replace(/\D/g, "");
-  const cc = JURISDICTION.phoneCallingCode;
-  const nationalLength = JURISDICTION.phoneNationalLength;
-
-  if (digits.startsWith(`00${cc}`)) return digits.slice(2 + cc.length);
-  if (digits.length === cc.length + nationalLength && digits.startsWith(cc)) {
-    return digits.slice(cc.length);
-  }
-  return digits;
-}
-
-export const phoneSchema = z
-  .string({ message: "auth.validation.phoneRequired" })
-  .trim()
-  .transform(toNationalNumber)
-  .refine((national) => PHONE_NATIONAL.test(national), {
-    message: "auth.validation.phoneInvalid",
-  })
-  .transform((national) => `+${JURISDICTION.phoneCallingCode}${national}`);
-
-export type Phone = z.infer<typeof phoneSchema>;
-
-/**
- * Age is computed in UTC from calendar components rather than by subtracting
- * timestamps, so a player never gains or loses a day to a timezone offset.
- */
-function ageOn(isoDate: string, reference: Date): number {
-  const [year, month, day] = isoDate.split("-").map(Number);
-  let age = reference.getUTCFullYear() - year;
-  const refMonth = reference.getUTCMonth() + 1;
-  const beforeBirthday =
-    refMonth < month || (refMonth === month && reference.getUTCDate() < day);
-  if (beforeBirthday) age -= 1;
-  return age;
-}
-
-function isRealDate(isoDate: string): boolean {
-  const [year, month, day] = isoDate.split("-").map(Number);
-  const parsed = new Date(Date.UTC(year, month - 1, day));
-  return (
-    parsed.getUTCFullYear() === year &&
-    parsed.getUTCMonth() === month - 1 &&
-    parsed.getUTCDate() === day
-  );
-}
-
-export const dateOfBirthSchema = z
-  .string({ message: "auth.validation.dobRequired" })
-  .trim()
-  .regex(ISO_DATE, { message: "auth.validation.dobFormat" })
-  .refine(isRealDate, { message: "auth.validation.dobInvalid" })
-  .refine((value) => ageOn(value, new Date()) <= 120, {
-    message: "auth.validation.dobInvalid",
-  })
-  .refine((value) => ageOn(value, new Date()) >= JURISDICTION.legalAge, {
-    message: "auth.validation.dobUnderage",
-  });
-
-export type DateOfBirth = z.infer<typeof dateOfBirthSchema>;
-
-export const countrySchema = z
-  .string({ message: "auth.validation.countryRequired" })
-  .trim()
-  .toUpperCase()
-  .pipe(
-    z.string().regex(/^[A-Z]{2}$/, { message: "auth.validation.countryInvalid" }),
-  );
-
-export type CountryCode = z.infer<typeof countrySchema>;
 
 export const localeSchema = z.enum(LOCALES, {
   message: "common.validation.localeInvalid",
@@ -322,47 +230,7 @@ const idSchema = z
   .max(64, { message: "common.validation.tooLong" })
   .regex(/^[A-Za-z0-9_-]+$/, { message: "common.validation.invalid" });
 
-export const registerSchema = z
-  .object({
-    username: usernameSchema,
-    firstName: nameSchema,
-    lastName: nameSchema,
-    email: emailSchema,
-    phone: phoneSchema,
-    password: passwordSchema,
-    confirmPassword: z.string({ message: "auth.validation.confirmRequired" }),
-    dateOfBirth: dateOfBirthSchema,
-    country: countrySchema,
-
-    /**
-     * SELF-DECLARATION ONLY. Ticking this box is not age verification: it is a
-     * statement by an anonymous visitor, worth nothing on its own. Before any
-     * account may place a real wager or deposit real money, a licensed
-     * identity-verification provider must confirm the player's date of birth
-     * against a government or credit-bureau source, and the account must stay
-     * gated until `User.kycStatus === "verified"`. `dateOfBirthSchema` blocking
-     * an underage date is an input check, not a control.
-     */
-    ageConfirmed: z.literal(true, {
-      message: "auth.validation.ageConfirmRequired",
-    }),
-    termsAccepted: z.literal(true, {
-      message: "auth.validation.termsRequired",
-    }),
-    marketingOptIn: z.boolean().optional().default(false),
-  })
-  .refine((value) => value.password === value.confirmPassword, {
-    message: "auth.validation.passwordsDiffer",
-    path: ["confirmPassword"],
-  })
-  .refine((value) => !value.password.toLowerCase().includes(value.email.split("@")[0]), {
-    message: "auth.validation.passwordContainsEmail",
-    path: ["password"],
-  });
-
-export type RegisterInput = z.infer<typeof registerSchema>;
-
-/** E-mail address or username — resolved server-side against the canonical forms. */
+/** The username the account was created with — resolved against its canonical (lower-case) form. */
 export const identifierSchema = z
   .string({ message: "auth.validation.identifierRequired" })
   .trim()
@@ -377,12 +245,6 @@ export const loginSchema = z.object({
 });
 
 export type LoginInput = z.infer<typeof loginSchema>;
-
-export const forgotPasswordSchema = z.object({
-  email: emailSchema,
-});
-
-export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 
 export const resetPasswordSchema = z
   .object({
@@ -515,20 +377,6 @@ export type LimitChangeInput = z.infer<typeof limitChangeSchema>;
 /* profile                                                                    */
 /* ========================================================================== */
 
-/**
- * Email and date of birth are absent on purpose: changing either one is a
- * re-verification flow with its own confirmation step, not a profile edit.
- */
-export const profileUpdateSchema = z.object({
-  firstName: nameSchema,
-  lastName: nameSchema,
-  phone: phoneSchema,
-  locale: localeSchema,
-  marketingOptIn: z.boolean().optional().default(false),
-});
-
-export type ProfileUpdateInput = z.infer<typeof profileUpdateSchema>;
-
 /** Public display name: what other screens show instead of a full name. */
 export const displayNameSchema = z
   .string({ message: "auth.validation.nameRequired" })
@@ -542,7 +390,6 @@ export const displayNameSchema = z
 
 /** What a player may edit about themselves. Identity data is an operator decision. */
 export const ownProfileSchema = z.object({
-  phone: phoneSchema,
   displayName: displayNameSchema,
 });
 

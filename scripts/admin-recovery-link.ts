@@ -1,16 +1,16 @@
 /**
- * Break-glass recovery for an administrator who cannot sign in:
+ * Break-glass recovery for a superadmin who cannot sign in:
  *
- *   npm run admin:recovery-link -- admin@example.com
+ *   npm run admin:recovery-link -- <username>
  *
  * Prints a one-time password-reset link (valid 30 minutes, single use). Running
  * this requires access to the deployment's environment and database, which is
  * the trust boundary: whoever has that can already do anything. The link is
  * recorded in the audit log (never the token itself).
  *
- * Self-service "forgot password" also works for administrators once an e-mail
- * transport is configured (see docs/DEPLOYMENT.md); until then, this is the
- * recovery path.
+ * Managers and players never need this: the superadmin (for a manager) or the
+ * manager (for a player) generates a new password from the console. The superadmin
+ * has nobody above them, so this is their recovery path.
  */
 import { existsSync } from "node:fs";
 
@@ -18,22 +18,21 @@ for (const file of [".env.local", ".env"]) {
   if (existsSync(file)) process.loadEnvFile(file);
 }
 
-import { emailSchema } from "@/lib/validation";
 import { prisma, transact } from "@/server/db";
 import { audit } from "@/server/security/audit";
 import { issuePasswordToken, passwordLink } from "@/services/authService";
 
 async function main() {
-  const parsed = emailSchema.safeParse(process.argv[2] ?? "");
-  if (!parsed.success) {
-    console.error("Usage: npm run admin:recovery-link -- <administrator e-mail>");
+  const username = (process.argv[2] ?? "").trim().toLowerCase();
+  if (!username) {
+    console.error("Usage: npm run admin:recovery-link -- <superadmin username>");
     process.exit(1);
   }
 
-  const user = await prisma.user.findUnique({ where: { email: parsed.data } });
-  if (!user || user.role !== "ADMIN") {
+  const user = await prisma.user.findUnique({ where: { username } });
+  if (!user || user.role !== "SUPERADMIN") {
     // Same message either way: this script is not an account-existence oracle.
-    console.error("No administrator account matches that address.");
+    console.error("No superadmin account matches that username.");
     process.exit(1);
   }
 
@@ -52,7 +51,7 @@ async function main() {
       action: "admin.player.reset_link_created",
       actor: null,
       targetUserId: user.id,
-      description: `Recovery link issued for administrator ${user.username} via the command line`,
+      description: `Recovery link issued for superadmin ${user.username} via the command line`,
       metadata: { source: "scripts/admin-recovery-link.ts" },
     });
     return issued;

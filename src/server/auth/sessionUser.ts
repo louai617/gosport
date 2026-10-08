@@ -2,6 +2,7 @@ import "server-only";
 
 import type { Prisma } from "@prisma/client";
 
+import { roleFromDb } from "@/server/auth/roles";
 import type { AccountStatus, SessionUser } from "@/types/user";
 
 /**
@@ -42,11 +43,10 @@ export function toSessionUser(row: SessionUserRow): SessionUser {
   return {
     id: row.id,
     username: row.username,
-    email: row.email,
     displayName: row.profile?.displayName ?? row.username,
     firstName: row.profile?.firstName ?? "",
     lastName: row.profile?.lastName ?? "",
-    role: row.role === "ADMIN" ? "admin" : "player",
+    role: roleFromDb(row.role),
     status: effectiveStatus(row),
     kycStatus: (row.profile?.kycStatus.toLowerCase() ?? "not_started") as SessionUser["kycStatus"],
     locale: row.profile?.locale ?? "fr",

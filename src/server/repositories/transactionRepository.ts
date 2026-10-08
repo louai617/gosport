@@ -24,6 +24,8 @@ import type {
 export interface TransactionQueryInput {
   /** Pin to one player. Player-facing callers always set this from the session. */
   userId?: string;
+  /** Limits an operator's view to the accounts they may see (a manager's own book). */
+  userScope?: Prisma.UserWhereInput;
   kinds?: TransactionKind[];
   statuses?: TransactionStatus[];
   from?: Date;
@@ -31,7 +33,7 @@ export interface TransactionQueryInput {
   /** Absolute magnitude in TND, either bound optional. */
   minAmount?: number;
   maxAmount?: number;
-  /** Matches reference, description — and, for operators, username and e-mail. */
+  /** Matches reference, description — and, for operators, the username. */
   search?: string;
   searchUsers?: boolean;
   page?: number;
@@ -60,6 +62,7 @@ export function buildTransactionWhere(q: TransactionQueryInput): Prisma.Transact
   const and: Prisma.TransactionWhereInput[] = [];
 
   if (q.userId) and.push({ userId: q.userId });
+  if (q.userScope) and.push({ user: q.userScope });
   if (q.kinds?.length) and.push({ type: { in: q.kinds.map(toDbType) } });
   if (q.statuses?.length) and.push({ status: { in: q.statuses.map(toDbStatus) } });
   if (q.from || q.to) {
@@ -92,7 +95,7 @@ export function buildTransactionWhere(q: TransactionQueryInput): Prisma.Transact
       { id: search },
     ];
     if (q.searchUsers) {
-      or.push({ user: { username: containsCI(search) } }, { user: { email: containsCI(search) } });
+      or.push({ user: { username: containsCI(search) } });
     }
     and.push({ OR: or });
   }

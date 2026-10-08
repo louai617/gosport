@@ -4,7 +4,6 @@ import { getUserProfile } from "@/services/userService";
 import { getRequestLocale, getT } from "@/i18n/server";
 import { formatDate } from "@/lib/format";
 import { Alert } from "@/components/ui/Alert";
-import { Badge } from "@/components/ui/Badge";
 import { Avatar } from "@/components/ui/Avatar";
 import { ProfileForm } from "@/components/account/ProfileForm";
 
@@ -18,10 +17,7 @@ export default async function ProfilePage() {
 
   const rows = [
     { label: t("auth.field.username"), value: user.username },
-    { label: t("auth.field.firstName"), value: user.firstName },
-    { label: t("auth.field.lastName"), value: user.lastName },
-    { label: t("auth.field.email"), value: user.email, verified: user.emailVerified },
-    { label: t("auth.field.dateOfBirth"), value: user.dateOfBirth ? formatDate(user.dateOfBirth, locale) : "—" },
+    { label: t("account.profile.displayName"), value: user.displayName },
     { label: t("auth.field.country"), value: t(`countries.${user.countryCode}`) },
   ];
 
@@ -62,11 +58,6 @@ export default async function ProfilePage() {
               <dt className="text-small text-ink-muted">{row.label}</dt>
               <dd className="flex items-center gap-2 text-small font-medium text-ink">
                 <span className="numeric">{row.value}</span>
-                {row.verified === undefined ? null : row.verified ? (
-                  <Badge tone="success">{t("account.profile.verified")}</Badge>
-                ) : (
-                  <Badge tone="warning">{t("account.profile.unverified")}</Badge>
-                )}
               </dd>
             </div>
           ))}
@@ -81,7 +72,7 @@ export default async function ProfilePage() {
         <h2 id="edit-heading" className="mb-3 text-h2 text-ink">
           {t("account.profile.edit")}
         </h2>
-        <ProfileForm displayName={user.displayName} phone={user.phone} />
+        <ProfileForm displayName={user.displayName} />
       </section>
 
       <section aria-labelledby="prefs-heading">

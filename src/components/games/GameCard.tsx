@@ -10,10 +10,12 @@ import { GameArtwork } from "./GameArtwork";
 
 export interface GameCardProps {
   game: CasinoGame;
+  /** Rounds played, when known. Shown only when above zero. */
+  plays?: number;
   className?: string;
 }
 
-export function GameCard({ game, className }: GameCardProps) {
+export function GameCard({ game, plays, className }: GameCardProps) {
   const t = useT();
   const playable = game.status === "playable";
   const title = game.nameKey ? t(game.nameKey) : (game.name ?? game.slug);
@@ -54,6 +56,12 @@ export function GameCard({ game, className }: GameCardProps) {
             <span className="inline-flex items-center gap-1 text-caption normal-case tracking-normal text-success">
               <ShieldCheck size={11} aria-hidden="true" />
               {t("games.provablyFair.short")}
+            </span>
+          ) : null}
+
+          {plays && plays > 0 ? (
+            <span className="numeric text-caption normal-case tracking-normal text-ink-subtle">
+              {t("games.plays", { count: plays })}
             </span>
           ) : null}
 

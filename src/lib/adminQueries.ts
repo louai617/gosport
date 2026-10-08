@@ -61,6 +61,7 @@ export const TRANSACTION_KINDS = [
   "admin_credit",
   "admin_debit",
   "adjustment",
+  "credit_transfer",
 ] as const;
 
 export const TRANSACTION_STATUSES = ["pending", "completed", "failed", "cancelled", "reversed"] as const;
@@ -70,11 +71,13 @@ export const playerListQuery = z.object({
   status: optional(z.enum(PLAYER_STATUSES)),
   kycStatus: optional(z.enum(KYC_STATUSES)),
   restricted: optional(z.enum(["true"]).transform(() => true)),
+  /** Superadmin: only the players of this manager. */
+  manager: optional(z.string().trim().max(64)),
   from: fromDay,
   to: toDay,
   page,
   pageSize,
-  sort: optional(z.enum(["createdAt", "lastLoginAt", "username", "email", "balance", "status"])),
+  sort: optional(z.enum(["createdAt", "lastLoginAt", "username", "balance", "status"])),
   direction,
 });
 

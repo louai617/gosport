@@ -1,5 +1,6 @@
 import type { CasinoGame, GameCategory, GameProvider } from "@/types/games";
 import { GAMES, GAME_BY_SLUG } from "@/data/games";
+import { prisma } from "@/server/db";
 import { PROVIDERS, getGameProvider } from "./gameProvider";
 
 /**
@@ -44,6 +45,35 @@ export async function getGames(query: GameQuery = {}): Promise<CasinoGame[]> {
   const found = GAMES.filter((game) => matches(game, query, game.name ?? game.slug));
   const sorted = [...found].sort((a, b) => b.popularity - a.popularity);
   return query.limit ? sorted.slice(0, query.limit) : sorted;
+}
+
+/**
+ * How many rounds each in-house game has actually been played, from the ledger's
+ * own round records — a real count, not a popularity score. Aggregates only: no
+ * player, stake or outcome leaves this function.
+ */
+export async function getPlayCounts(): Promise<Record<string, number>> {
+  const rows = await prisma.bet.groupBy({
+    by: ["gameKey"],
+    where: { kind: "CASINO", gameKey: { not: null } },
+    _count: { _all: true },
+  });
+  return Object.fromEntries(rows.map((row) => [row.gameKey!, row._count._all]));
+}
+
+/**
+ * The whole catalogue, most played first. Titles nobody has played yet — which
+ * includes every provider title, none of which can be opened here — follow in the
+ * catalogue's own order.
+ */
+export async function getGamesByPlays(): Promise<{
+  games: CasinoGame[];
+  plays: Record<string, number>;
+}> {
+  const [games, plays] = await Promise.all([getGames(), getPlayCounts()]);
+  const played = (game: CasinoGame) => (game.key ? (plays[game.key] ?? 0) : 0);
+  const ordered = [...games].sort((a, b) => played(b) - played(a));
+  return { games: ordered, plays };
 }
 
 export async function getGameBySlug(slug: string): Promise<CasinoGame | null> {

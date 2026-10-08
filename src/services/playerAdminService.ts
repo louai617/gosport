@@ -1,20 +1,13 @@
 import "server-only";
 
-import { randomBytes } from "node:crypto";
-
 import type { KycStatus, Prisma, UserStatus } from "@prisma/client";
 
-import type {
-  CreatePlayerInput,
-  UpdatePlayerInput,
-} from "@/lib/adminValidation";
 import { fromBig } from "@/lib/money";
-import { isUniqueViolation, prisma, transact, type Tx } from "@/server/db";
+import { prisma, transact, type Tx } from "@/server/db";
 import { AuthError, requirePermission } from "@/server/auth/guard";
-import { createHasher } from "@/server/auth/password";
+import { managedManagerWhere, managedPlayerWhere } from "@/server/auth/scope";
 import { revokeAllSessions } from "@/server/auth/session";
 import { effectiveStatus } from "@/server/auth/sessionUser";
-import { sendSecureLink } from "@/server/notifications/transport";
 import { audit } from "@/server/security/audit";
 import {
   clampPage,
@@ -22,9 +15,8 @@ import {
   containsCI,
   type SortDirection,
 } from "@/server/repositories/filters";
-import { ensureWallet } from "@/server/wallet/ledger";
 import type { AccountStatus, KycStatus as KycView, Paginated } from "@/types";
-import { INVITATION_TTL_MS, issuePasswordToken, passwordLink, passwordPolicyError } from "./authService";
+import type { SessionUser } from "@/types/user";
 import { loadExclusionsFor, loadLimitsFor } from "./responsibleService";
 
 /**
@@ -32,20 +24,22 @@ import { loadExclusionsFor, loadLimitsFor } from "./responsibleService";
  *
  * Every function starts with `requirePermission(...)` — the layout hiding a page
  * is a convenience, this is the authority. The target is always looked up by id
- * *and* required to be a PLAYER: an administrator cannot suspend, edit or credit
- * another administrator through these paths.
+ * *through the actor's scope* (`managedPlayerWhere`): a superadmin reaches every
+ * player, a manager only the players they created, and a guessed id outside that
+ * is simply "not found". Staff accounts are never reachable through these paths.
  *
- * What an operator can never obtain: a password, a password hash, or a session
- * token. Credentials are only ever *replaced* (a one-time link, or a temporary
- * password the operator themselves chose), never revealed.
+ * What an operator can never obtain: a password hash or a session token, or any
+ * existing password. A credential is only ever *replaced* with a freshly
+ * generated one, shown once (`accountService.resetCredentials`).
  */
 
 export interface PlayerRow {
   id: string;
   username: string;
-  email: string;
-  phone: string | null;
   displayName: string;
+  /** The manager who created (and sells credit to) this player. */
+  managerId: string | null;
+  managerUsername: string | null;
   status: AccountStatus;
   kycStatus: KycView;
   balance: number;
@@ -60,6 +54,8 @@ export interface PlayerListQuery {
   status?: AccountStatus;
   kycStatus?: KycView;
   restricted?: boolean;
+  /** Superadmin only: restrict to one manager's players. A manager is always restricted to their own. */
+  manager?: string;
   from?: Date;
   to?: Date;
   page?: number;
@@ -81,6 +77,7 @@ const playerInclude = (now: Date) =>
   ({
     profile: true,
     wallet: { select: { balance: true } },
+    createdBy: { select: { username: true } },
     exclusions: {
       where: { OR: [{ endsAt: null }, { endsAt: { gt: now } }] },
       select: { id: true },
@@ -94,9 +91,9 @@ function toPlayerRow(row: PlayerDbRow): PlayerRow {
   return {
     id: row.id,
     username: row.username,
-    email: row.email,
-    phone: row.phone,
     displayName: row.profile?.displayName ?? row.username,
+    managerId: row.createdById,
+    managerUsername: row.createdBy?.username ?? null,
     status: effectiveStatus(row),
     kycStatus: (row.profile?.kycStatus.toLowerCase() ?? "not_started") as KycView,
     balance: fromBig(row.wallet?.balance) / 1000,
@@ -110,10 +107,10 @@ function toPlayerRow(row: PlayerDbRow): PlayerRow {
 /* ------------------------------------------------------------------- list */
 
 export async function listPlayers(query: PlayerListQuery = {}): Promise<Paginated<PlayerRow>> {
-  await requirePermission("players.read");
+  const actor = await requirePermission("players.read");
 
   const now = new Date();
-  const and: Prisma.UserWhereInput[] = [{ role: "PLAYER" }];
+  const and: Prisma.UserWhereInput[] = [managedPlayerWhere(actor)];
 
   const search = cleanSearch(query.search);
   if (search) {
@@ -121,11 +118,8 @@ export async function listPlayers(query: PlayerListQuery = {}): Promise<Paginate
       OR: [
         { id: search },
         { username: containsCI(search) },
-        { email: containsCI(search) },
-        { phone: containsCI(search) },
         { profile: { displayName: containsCI(search) } },
-        { profile: { lastName: containsCI(search) } },
-        { profile: { firstName: containsCI(search) } },
+        ...(actor.role === "superadmin" ? [{ createdBy: { username: containsCI(search) } }] : []),
       ],
     });
   }
@@ -144,6 +138,7 @@ export async function listPlayers(query: PlayerListQuery = {}): Promise<Paginate
   if (query.kycStatus) {
     and.push({ profile: { kycStatus: query.kycStatus.toUpperCase() as KycStatus } });
   }
+  if (query.manager && actor.role === "superadmin") and.push({ createdById: query.manager });
   if (query.restricted) {
     and.push({ profile: { OR: [{ wageringBlocked: true }, { withdrawalsBlocked: true }] } });
   }
@@ -158,15 +153,13 @@ export async function listPlayers(query: PlayerListQuery = {}): Promise<Paginate
   const orderBy: Prisma.UserOrderByWithRelationInput[] = [
     query.sort === "username"
       ? { username: direction }
-      : query.sort === "email"
-        ? { email: direction }
-        : query.sort === "lastLoginAt"
-          ? { lastLoginAt: { sort: direction, nulls: "last" } }
-          : query.sort === "balance"
-            ? { wallet: { balance: direction } }
-            : query.sort === "status"
-              ? { status: direction }
-              : { createdAt: direction },
+      : query.sort === "lastLoginAt"
+        ? { lastLoginAt: { sort: direction, nulls: "last" } }
+        : query.sort === "balance"
+          ? { wallet: { balance: direction } }
+          : query.sort === "status"
+            ? { status: direction }
+            : { createdAt: direction },
     { id: "desc" },
   ];
 
@@ -195,7 +188,6 @@ export interface PlayerDetail extends PlayerRow {
   dateOfBirth: string | null;
   ageDeclaredAt: string | null;
   termsAcceptedAt: string | null;
-  emailVerifiedAt: string | null;
   suspendedAt: string | null;
   suspendedReason: string | null;
   restrictionReason: string | null;
@@ -207,11 +199,11 @@ export interface PlayerDetail extends PlayerRow {
 }
 
 export async function getPlayerDetail(id: string): Promise<PlayerDetail | null> {
-  await requirePermission("players.read");
+  const actor = await requirePermission("players.read");
   const now = new Date();
 
   const row = await prisma.user.findFirst({
-    where: { id, role: "PLAYER" },
+    where: { id, ...managedPlayerWhere(actor) },
     include: playerInclude(now),
   });
   if (!row) return null;
@@ -235,7 +227,6 @@ export async function getPlayerDetail(id: string): Promise<PlayerDetail | null> 
     dateOfBirth: profile?.dateOfBirth?.toISOString().slice(0, 10) ?? null,
     ageDeclaredAt: profile?.ageDeclaredAt?.toISOString() ?? null,
     termsAcceptedAt: profile?.termsAcceptedAt?.toISOString() ?? null,
-    emailVerifiedAt: row.emailVerifiedAt?.toISOString() ?? null,
     suspendedAt: row.suspendedAt?.toISOString() ?? null,
     suspendedReason: row.suspendedReason,
     restrictionReason: profile?.restrictionReason ?? null,
@@ -253,127 +244,6 @@ export async function getPlayerResponsibleGaming(id: string) {
   return { limits, exclusions };
 }
 
-/* ----------------------------------------------------------------- create */
-
-export interface CreatePlayerResult {
-  ok: boolean;
-  errorKey?: string;
-  fieldErrors?: Record<string, string>;
-  playerId?: string;
-  username?: string;
-  /** One-time link, shown to the operator once. Never stored in the clear. */
-  invitationLink?: string;
-  delivered?: boolean;
-}
-
-export async function createPlayer(input: CreatePlayerInput): Promise<CreatePlayerResult> {
-  const actor = await requirePermission("players.create");
-
-  const taken = await prisma.user.findFirst({
-    where: { OR: [{ email: input.email }, { username: input.username }] },
-    select: { email: true, username: true },
-  });
-  if (taken) {
-    const fieldErrors: Record<string, string> = {};
-    if (taken.email === input.email) fieldErrors.email = "auth.validation.emailTaken";
-    if (taken.username === input.username) fieldErrors.username = "auth.validation.usernameTaken";
-    return { ok: false, errorKey: "common.error.checkFields", fieldErrors };
-  }
-
-  const hasher = createHasher();
-  let passwordHash: string;
-  let status: UserStatus;
-  let mustChange = false;
-
-  if (input.credentialMode === "password") {
-    const policy = await passwordPolicyError(input.temporaryPassword ?? "");
-    if (policy) {
-      return { ok: false, errorKey: policy, fieldErrors: { temporaryPassword: policy } };
-    }
-    passwordHash = await hasher.hash(input.temporaryPassword!);
-    status = "ACTIVE";
-    // The operator chose this password, so it is spent the moment the player signs in.
-    mustChange = true;
-  } else {
-    // An unguessable placeholder: the account cannot be signed into until the
-    // invitation is accepted and a real password is set.
-    passwordHash = await hasher.hash(randomBytes(32).toString("base64url"));
-    status = "PENDING";
-  }
-
-  try {
-    const created = await transact(async (tx) => {
-      const user = await tx.user.create({
-        data: {
-          username: input.username,
-          email: input.email,
-          phone: input.phone,
-          passwordHash,
-          role: "PLAYER",
-          status,
-          mustChangePassword: mustChange,
-          createdById: actor.id,
-          profile: {
-            create: {
-              displayName: `${input.firstName} ${input.lastName.charAt(0)}.`,
-              firstName: input.firstName,
-              lastName: input.lastName,
-              countryCode: input.country,
-              locale: input.locale,
-            },
-          },
-        },
-      });
-      await ensureWallet(tx, user.id);
-
-      const token =
-        input.credentialMode === "invitation"
-          ? await issuePasswordToken(tx, {
-              userId: user.id,
-              purpose: "INVITATION",
-              ttlMs: INVITATION_TTL_MS,
-              createdById: actor.id,
-            })
-          : null;
-
-      await audit({
-        tx,
-        action: "admin.player.created",
-        actor,
-        targetUserId: user.id,
-        targetType: "user",
-        targetId: user.id,
-        description: `Created player ${user.username} (${input.credentialMode === "invitation" ? "invitation" : "temporary password"})`,
-        metadata: { credentialMode: input.credentialMode, initialStatus: status },
-      });
-      return { user, token };
-    });
-
-    let delivered = false;
-    let link: string | undefined;
-    if (created.token) {
-      link = passwordLink(created.token);
-      const delivery = await sendSecureLink({
-        kind: "invitation",
-        to: { email: created.user.email, phone: created.user.phone },
-        link,
-      });
-      delivered = delivery.delivered;
-    }
-
-    return {
-      ok: true,
-      playerId: created.user.id,
-      username: created.user.username,
-      invitationLink: link,
-      delivered,
-    };
-  } catch (error) {
-    if (isUniqueViolation(error)) return { ok: false, errorKey: "auth.error.registrationConflict" };
-    throw error;
-  }
-}
-
 /* ------------------------------------------------------------------- edit */
 
 export interface PlayerActionResult {
@@ -384,99 +254,38 @@ export interface PlayerActionResult {
   link?: string;
 }
 
-async function requirePlayer(playerId: string, tx: Tx | typeof prisma = prisma) {
-  const player = await tx.user.findFirst({
-    where: { id: playerId, role: "PLAYER" },
+export type ManagedKind = "player" | "manager";
+
+/** The one door to an account: found only if it is inside the actor's scope. */
+export async function requireManagedAccount(
+  actor: SessionUser,
+  accountId: string,
+  kind: ManagedKind = "player",
+  tx: Tx | typeof prisma = prisma,
+) {
+  const where = kind === "player" ? managedPlayerWhere(actor) : managedManagerWhere(actor);
+  const account = await tx.user.findFirst({
+    where: { id: accountId, ...where },
     include: { profile: true },
   });
-  if (!player) throw new AuthError("forbidden", "admin.players.error.notFound");
-  return player;
+  if (!account) throw new AuthError("forbidden", "admin.players.error.notFound");
+  return account;
 }
 
-export async function updatePlayer(input: UpdatePlayerInput): Promise<PlayerActionResult> {
-  const actor = await requirePermission("players.update");
-  const player = await requirePlayer(input.playerId);
-
-  if (input.email !== player.email) {
-    const clash = await prisma.user.findUnique({ where: { email: input.email }, select: { id: true } });
-    if (clash && clash.id !== player.id) {
-      return { ok: false, errorKey: "common.error.checkFields", fieldErrors: { email: "auth.validation.emailTaken" } };
-    }
-  }
-
-  const before = {
-    email: player.email,
-    phone: player.phone,
-    firstName: player.profile?.firstName,
-    lastName: player.profile?.lastName,
-    displayName: player.profile?.displayName,
-    country: player.profile?.countryCode,
-    locale: player.profile?.locale,
-  };
-  const after = {
-    email: input.email,
-    phone: input.phone ?? null,
-    firstName: input.firstName,
-    lastName: input.lastName,
-    displayName: input.displayName,
-    country: input.country,
-    locale: input.locale,
-  };
-  const changed = Object.keys(after).filter(
-    (key) => (before as Record<string, unknown>)[key] !== (after as Record<string, unknown>)[key],
-  );
-  if (changed.length === 0) return { ok: true };
-
-  try {
-    await transact(async (tx) => {
-      await tx.user.update({
-        where: { id: player.id },
-        data: {
-          email: input.email,
-          phone: input.phone ?? null,
-          // A changed address is unproven until its owner uses it.
-          ...(input.email !== player.email ? { emailVerifiedAt: null } : {}),
-          profile: {
-            update: {
-              firstName: input.firstName,
-              lastName: input.lastName,
-              displayName: input.displayName,
-              countryCode: input.country,
-              locale: input.locale,
-            },
-          },
-        },
-      });
-      await audit({
-        tx,
-        action: "admin.player.updated",
-        actor,
-        targetUserId: player.id,
-        targetType: "user",
-        targetId: player.id,
-        description: `Updated ${changed.join(", ")} for ${player.username}: ${input.reason}`,
-        metadata: { changed, before, after, reason: input.reason },
-      });
-    });
-  } catch (error) {
-    if (isUniqueViolation(error)) {
-      return { ok: false, errorKey: "common.error.checkFields", fieldErrors: { email: "auth.validation.emailTaken" } };
-    }
-    throw error;
-  }
-  return { ok: true };
-}
+const requirePlayer = (actor: SessionUser, playerId: string, tx: Tx | typeof prisma = prisma) =>
+  requireManagedAccount(actor, playerId, "player", tx);
 
 /* ----------------------------------------------------------- status changes */
 
-async function changeStatus(
+export async function changeStatus(
   playerId: string,
   to: "SUSPENDED" | "LOCKED" | "ACTIVE",
   reason: string,
-  permission: "players.suspend" | "players.lock",
+  permission: "players.suspend" | "players.lock" | "managers.update",
+  kind: ManagedKind = "player",
 ): Promise<PlayerActionResult> {
   const actor = await requirePermission(permission);
-  const player = await requirePlayer(playerId);
+  const player = await requireManagedAccount(actor, playerId, kind);
 
   const from = player.status;
   const allowed: Record<typeof to, UserStatus[]> = {
@@ -544,7 +353,7 @@ export async function setPlayerRestrictions(input: {
   reason: string;
 }): Promise<PlayerActionResult> {
   const actor = await requirePermission("players.update");
-  const player = await requirePlayer(input.playerId);
+  const player = await requirePlayer(actor, input.playerId);
 
   await transact(async (tx) => {
     await tx.playerProfile.update({
@@ -588,7 +397,7 @@ export async function setPlayerVerification(input: {
   reason: string;
 }): Promise<PlayerActionResult> {
   const actor = await requirePermission("players.update");
-  const player = await requirePlayer(input.playerId);
+  const player = await requirePlayer(actor, input.playerId);
 
   await transact(async (tx) => {
     await tx.playerProfile.update({ where: { userId: player.id }, data: { kycStatus: input.status } });
@@ -610,7 +419,7 @@ export async function setPlayerVerification(input: {
 
 export async function revokePlayerSessions(playerId: string): Promise<PlayerActionResult & { revoked?: number }> {
   const actor = await requirePermission("players.sessions.revoke");
-  const player = await requirePlayer(playerId);
+  const player = await requirePlayer(actor, playerId);
   const revoked = await revokeAllSessions(player.id, { reason: "admin_revoked" });
   await audit({
     action: "admin.player.sessions_revoked",
@@ -622,43 +431,6 @@ export async function revokePlayerSessions(playerId: string): Promise<PlayerActi
     metadata: { revoked },
   });
   return { ok: true, revoked };
-}
-
-/**
- * Issues a one-time link the operator hands to the player (an invitation for a
- * `PENDING` account, a reset for anyone else). The operator sees the link once;
- * what is stored is its HMAC, and following it makes the *player* choose a
- * password. Existing sessions are not touched until they do.
- */
-export async function createCredentialLink(playerId: string): Promise<PlayerActionResult> {
-  const actor = await requirePermission("players.credentials");
-  const player = await requirePlayer(playerId);
-
-  if (player.status === "CLOSED") return { ok: false, errorKey: "admin.players.error.invalidTransition" };
-
-  const purpose = player.status === "PENDING" ? "INVITATION" : "PASSWORD_RESET";
-  const ttl = purpose === "INVITATION" ? INVITATION_TTL_MS : 24 * 3600 * 1000;
-
-  const token = await transact(async (tx) => {
-    const issued = await issuePasswordToken(tx, {
-      userId: player.id,
-      purpose,
-      ttlMs: ttl,
-      createdById: actor.id,
-    });
-    await audit({
-      tx,
-      action: purpose === "INVITATION" ? "admin.player.invitation_created" : "admin.player.reset_link_created",
-      actor,
-      targetUserId: player.id,
-      targetType: "user",
-      targetId: player.id,
-      description: `Issued a one-time ${purpose === "INVITATION" ? "invitation" : "password reset"} link for ${player.username}`,
-    });
-    return issued;
-  });
-
-  return { ok: true, link: passwordLink(token) };
 }
 
 /* ------------------------------------------------------------------ activity */

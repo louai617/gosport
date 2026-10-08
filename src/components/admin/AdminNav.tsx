@@ -11,6 +11,7 @@ import {
   ScrollText,
   Settings,
   ShieldCheck,
+  UserCog,
   Users,
   Wallet,
 } from "lucide-react";
@@ -33,6 +34,7 @@ interface AdminNavItem {
  */
 const ITEMS: AdminNavItem[] = [
   { href: "/admin", labelKey: "admin.nav.dashboard", icon: LayoutDashboard, exact: true },
+  { href: "/admin/managers", labelKey: "admin.nav.managers", icon: UserCog },
   { href: "/admin/players", labelKey: "admin.nav.players", icon: Users },
   { href: "/admin/transactions", labelKey: "admin.nav.transactions", icon: Receipt },
   { href: "/admin/wallet", labelKey: "admin.nav.wallet", icon: HandCoins },
@@ -44,9 +46,12 @@ const ITEMS: AdminNavItem[] = [
   { href: "/admin/settings", labelKey: "admin.nav.settings", icon: Settings },
 ];
 
-export function AdminNav() {
+export function AdminNav({ allowed }: { allowed: readonly string[] }) {
   const t = useT();
   const pathname = usePathname();
+  // The server decides which entries this role may see; hiding the rest is a courtesy,
+  // the pages and services refuse anyway.
+  const items = ITEMS.filter((item) => allowed.includes(item.href));
 
   const isActive = (item: AdminNavItem) =>
     item.exact ? pathname === item.href : pathname.startsWith(item.href);
@@ -56,7 +61,7 @@ export function AdminNav() {
       <nav aria-label={t("admin.console")} className="min-w-0 lg:hidden">
         <ScrollFade showControls={false}>
           <ul className="flex gap-1.5 pb-1">
-            {ITEMS.map((item) => (
+            {items.map((item) => (
               <li key={item.href}>
                 <Link
                   href={item.href}
@@ -83,7 +88,7 @@ export function AdminNav() {
           className="sticky top-[calc(var(--spacing-header)+1rem)] rounded-xl border border-line bg-surface p-2"
         >
           <ul className="space-y-0.5">
-            {ITEMS.map((item) => (
+            {items.map((item) => (
               <li key={item.href}>
                 <Link
                   href={item.href}

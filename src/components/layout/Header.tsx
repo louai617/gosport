@@ -145,14 +145,8 @@ export function Header({ sports, notifications, user, wallet }: HeaderProps) {
               </>
             ) : (
               <div className="ms-1 flex items-center gap-2">
-                <Link
-                  href="/login"
-                  className={cn(buttonStyles({ variant: "ghost", size: "sm" }), "hidden sm:inline-flex")}
-                >
+                <Link href="/login" className={buttonStyles({ size: "sm" })}>
                   {t("nav.login")}
-                </Link>
-                <Link href="/register" className={buttonStyles({ size: "sm" })}>
-                  {t("nav.register")}
                 </Link>
               </div>
             )}

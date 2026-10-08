@@ -56,7 +56,7 @@
   "account.profile.personal": "البيانات الشخصية",
   "account.profile.preferences": "التفضيلات",
   "account.profile.memberSince": "عضو منذ {date}",
-  "account.profile.saveNotice": "الاسم وتاريخ الميلاد والبريد لا يغيّرها إلا الدعم مع تسجيل السبب.",
+  "account.profile.saveNotice": "اسم المستخدم وبقية بيانات حسابك يديرها مديرك.",
   "account.profile.verified": "موثّق",
   "account.profile.unverified": "غير موثّق",
   "account.security.title": "الأمان",
@@ -120,5 +120,9 @@
   "account.security.revokeOthers": "تسجيل الخروج من كل الأجهزة الأخرى",
   "account.security.sessionRevoked": "تم تسجيل خروج ذلك الجهاز",
   "account.security.otherSessionsRevoked": "تم تسجيل خروج كل الأجهزة الأخرى",
-  "account.error.wageringBlocked": "المراهنة محظورة على هذا الحساب. تواصل مع الدعم."
+  "account.error.wageringBlocked": "المراهنة محظورة على هذا الحساب. تواصل مع الدعم.",
+  "notify.creditReceived.title": "تم استلام رصيد",
+  "notify.creditReceived.body": "أُضيف رصيد قدره {amount} دينار إلى رصيدك.",
+  "notify.creditFromManager.title": "تمت إضافة رصيد",
+  "notify.creditFromManager.body": "أضاف مديرك {amount} دينار إلى رصيدك."
 }

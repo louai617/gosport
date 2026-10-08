@@ -1,6 +1,5 @@
 import type {
   LoginInput as ValidatedLoginInput,
-  RegisterInput as ValidatedRegisterInput,
 } from "@/lib/validation";
 import type {
   Bet,
@@ -159,7 +158,6 @@ export type SelfExclusionDuration = number | "permanent";
  * form validates with `registerSchema`, so anything the service reads must be
  * a field that schema actually produces.
  */
-export type RegisterInput = ValidatedRegisterInput;
 export type LoginInput = ValidatedLoginInput;
 
 /* ------------------------------------------------------------------ payments */

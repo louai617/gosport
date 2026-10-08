@@ -18,7 +18,6 @@ export async function updateProfileAction(
 ): Promise<ActionState> {
   return guarded("account.profile", async () => {
     const result = await updateOwnProfile({
-      phone: text(formData, "phone"),
       displayName: text(formData, "displayName"),
     });
     if (result.ok) revalidatePath("/account/profile");

@@ -38,12 +38,12 @@ Vercel** (read-only, ephemeral filesystem would silently lose every account).
 
 | Model | Purpose |
 |---|---|
-| `User` | Identity and account state: username, e-mail, Argon2id hash, `role`, `status`, `mustChangePassword`, `failedLoginCount`, `lockedUntil`. |
+| `User` | Identity and account state: **username** (no e-mail, no phone), Argon2id hash, `role` (`PLAYER` / `MANAGER` / `SUPERADMIN`), `status`, `mustChangePassword`, `failedLoginCount`, `lockedUntil`, and `createdById` — the manager a player belongs to, or the superadmin a manager belongs to. |
 | `PlayerProfile` | One per player: names, date of birth, locale, `kycStatus` (manual), `wageringBlocked`, `withdrawalsBlocked`, restriction reason. |
 | `Session` | Server-side session: **HMAC of the token** (never the token), idle and absolute expiry, `revokedAt`, hashed IP, user agent. |
 | `PasswordToken` | Single-use reset / invitation tokens (HMAC stored), with expiry and `usedAt`. |
 | `Wallet` | One per user; `balance` in millimes, CHECK ≥ 0. |
-| `Transaction` | The append-only ledger: `type`, `status`, `amount`, `balanceBefore`/`balanceAfter`, `reference`, `idempotencyKey`, `betId`, `relatedId`, `createdById`. |
+| `Transaction` | The append-only ledger: `type` (incl. `CREDIT_TRANSFER`, a manager's side of selling credit; the player's side is a `DEPOSIT`), `status`, `amount`, `balanceBefore`/`balanceAfter`, `reference`, `idempotencyKey`, `betId`, `relatedId`, `createdById`. |
 | `AdjustmentRequest` | Four-eyes approval queue for balance adjustments above the configured threshold. |
 | `Bet` | A sportsbook ticket (`kind = SPORTS`) or a casino round (`kind = CASINO`, `gameKey`, `state`, `result` proof, optimistic-lock `version`). |
 | `BetLeg` | Snapshot of each sportsbook selection at placement (event, market, label, price in milli-odds) — settlement never depends on the live dataset. |
@@ -105,7 +105,7 @@ Migrations are engine-specific SQL, so they live in separate folders and
 `prisma.config.ts` picks the one that matches `DATABASE_URL`:
 
 ```
-prisma/migrations/sqlite/      20261007145255_init, 20261007150000_integrity_guards
+prisma/migrations/sqlite/      20261007145255_init, 20261007150000_integrity_guards, 20261008151318_managers_and_roles
 prisma/migrations/postgresql/  20261007145255_init, 20261007150000_integrity_guards
 ```
 
@@ -119,10 +119,10 @@ resets data.
 
 ```bash
 npm run db:deploy      # apply migrations to DATABASE_URL (safe, forward-only)
-npm run db:seed        # create the first administrator (ADMIN_EMAIL / ADMIN_PASSWORD)
+npm run db:seed        # create the superadmin (ADMIN_USERNAME / ADMIN_PASSWORD)
 npm run db:migrate     # create a new migration in development
 npm run db:studio      # browse data
-npm run admin:recovery-link -- <email>   # break-glass single-use reset link
+npm run admin:recovery-link -- <username>   # break-glass single-use reset link (superadmin)
 ```
 
 To reset a local database: stop the dev server, delete `dev.db*`, run
@@ -131,8 +131,8 @@ and the generated client open).
 
 ## Verification status
 
-The full integration suite (216 checks: auth, RBAC, ledger, concurrency,
-withdrawals, four-eyes, casino rounds, page protection, audit, reports) passes
+The full integration suite (258 checks: auth, RBAC, manager scoping, the credit chain,
+ledger, concurrency, withdrawals, four-eyes, casino rounds, page protection, audit, reports) passes
 against SQLite on both the dev server and a production build, and against
 PostgreSQL **using Prisma's embedded server (`prisma dev`, PGlite) with a
 single-connection pool**. That validates the PostgreSQL migrations, triggers and

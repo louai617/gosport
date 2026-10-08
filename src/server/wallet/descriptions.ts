@@ -41,5 +41,7 @@ export function describeEntry(
       return { description: "Account debit", descriptionKey: "wallet.tx.adminDebit" };
     case "ADJUSTMENT":
       return { description: "Account adjustment", descriptionKey: "wallet.tx.adjustment" };
+    case "CREDIT_TRANSFER":
+      return { description: "Credit sold to a player", descriptionKey: "wallet.tx.creditTransfer" };
   }
 }

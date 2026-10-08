@@ -82,5 +82,9 @@
   "wallet.method.manual.name": "Payout by the operator",
   "wallet.method.manual.description": "Paid to you by the operator outside the platform",
   "wallet.processing.operator": "After operator review",
-  "wallet.error.withdrawalsBlocked": "Withdrawals are blocked on this account. Contact support."
+  "wallet.error.withdrawalsBlocked": "Withdrawals are blocked on this account. Contact support.",
+  "wallet.tx.creditTransfer": "Credit sold to a player",
+  "wallet.tx.creditIssued": "Credit from the superadmin",
+  "wallet.tx.creditFromManager": "Credit from your manager",
+  "wallet.kind.credit_transfer": "Credit sold"
 }

@@ -500,9 +500,14 @@ export async function getPlayerWalletSummary(playerId: string): Promise<PlayerWa
 
   const sums = await prisma.transaction.groupBy({
     by: ["type"],
-    // `relatedId` is set only on the REFUND that returns a rejected withdrawal —
-    // that is a reversal, not a refund the player was given, so it stays out.
-    where: { userId: playerId, status: { in: ["COMPLETED", "PENDING"] }, relatedId: null },
+    // A REFUND with a `relatedId` returns a rejected withdrawal — a reversal, not a
+    // refund the player was given, so it stays out. (A sold deposit also carries a
+    // `relatedId`, and is a real deposit.)
+    where: {
+      userId: playerId,
+      status: { in: ["COMPLETED", "PENDING"] },
+      NOT: { type: "REFUND", relatedId: { not: null } },
+    },
     _sum: { amount: true },
   });
   const sum = (...types: TransactionType[]) =>

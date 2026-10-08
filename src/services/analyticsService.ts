@@ -88,6 +88,13 @@ export interface DashboardData {
 }
 
 const PLAYER = { user: { role: "PLAYER" as const } };
+
+/**
+ * `relatedId` links the two sides of a manager's credit sale *and* marks the
+ * REFUND that returns a rejected withdrawal. Only the latter is a reversal that
+ * must stay out of the money-flow figures; a sold deposit is a real deposit.
+ */
+const NOT_A_REVERSAL = { NOT: { type: "REFUND" as const, relatedId: { not: null } } };
 /** Safety valve for the in-memory bucketing below. */
 const MAX_SERIES_ROWS = 250_000;
 
@@ -119,7 +126,7 @@ export async function getDashboard(query: Partial<PeriodQuery> = {}): Promise<Da
     status: "COMPLETED",
     createdAt: range,
     // The REFUND that returns a rejected withdrawal is a reversal, not a player refund.
-    relatedId: null,
+    ...NOT_A_REVERSAL,
   };
 
   const [
@@ -265,7 +272,7 @@ async function buildSeries(period: ResolvedPeriod) {
       status: "COMPLETED",
       createdAt: { gte: period.from, lt: period.to },
       type: { in: ["DEPOSIT", "WITHDRAWAL", "BET", "WIN", "REFUND"] },
-      relatedId: null,
+      ...NOT_A_REVERSAL,
     },
     select: { createdAt: true, type: true, amount: true, betId: true },
     orderBy: { createdAt: "asc" },

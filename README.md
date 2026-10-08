@@ -16,31 +16,45 @@ console and an audited credit ledger, built for the Tunisian market.
 > SportGo is **not licensed** to offer gambling in Tunisia or anywhere else.
 >
 > - Accounts, balances, bets and transactions are **real database records**, but
->   the money is **demo credit**: no payment provider exists. An administrator
->   records credit; withdrawals are marked paid by an operator out of band.
+>   the money is **demo credit**: no payment provider exists. The superadmin issues
+>   credit, managers sell it on to their players, and withdrawals are marked paid
+>   by the operator out of band.
 > - Odds and results come from a built-in **dataset**, not a live feed.
-> - Age and identity are **not verified**: the age box is a self-declaration and
->   the verification status is a manual operator decision.
-> - There is **no e-mail transport** and **no two-factor authentication** yet.
+> - Age and identity are **not verified**: whoever creates an account is responsible
+>   for the holder being of age, and the verification status is a manual decision.
+> - Accounts have a **username and password only** — no e-mail, no phone — and there
+>   is **no two-factor authentication** yet.
 >
 > [`docs/COMPLIANCE.md`](docs/COMPLIANCE.md) lists the gates that must close before
 > this could become a real product.
 
 ## What it does
 
-**Players** register and sign in (Argon2id, server-side sessions), see their
+**Nobody signs up.** A **superadmin** creates **managers** and issues them credit; a
+**manager** creates **players** (the username and password are generated and shown
+once) and sells them credit out of their own balance. Credit only ever moves down
+that chain, and every step is a ledger entry and an audit record.
+
+**Players** sign in with the credentials they were given (Argon2id, server-side
+sessions; the generated password must be changed at first sign-in), see their
 balance and full transaction history, place sportsbook tickets and play eight
 casino games (dice, limbo, crash, mines, plinko, slots, blackjack, roulette) that
-are **settled on the server** from a seed they can verify, request withdrawals,
-set deposit / stake / loss / single-bet limits, take a break or self-exclude, and
+are **settled on the server** from a seed they can verify — picked from a lobby
+they can filter, search and sort (most played first) — request withdrawals, set
+deposit / stake / loss / single-bet limits, take a break or self-exclude, and
 manage their sessions.
 
-**Administrators** (role-based access) get a console at `/admin`: a dashboard with
-period filters and charts, player management (create, search, suspend, lock,
-restrict, verify, revoke sessions, issue reset links), wallet credits and debits
-with a four-eyes approval above a threshold, a withdrawal queue, transaction and
-bet explorers with per-leg settlement, reports with CSV export, an immutable
-audit log, runtime settings and responsible-gambling oversight.
+**The superadmin** has the full console at `/admin`: a dashboard with period
+filters and charts, managers (create, issue credit, generate a new password,
+suspend), every player of every manager, wallet credits and debits with a four-eyes
+approval above a threshold, a withdrawal queue, transaction and bet explorers with
+per-leg settlement, reports with CSV export, an immutable audit log, runtime
+settings and responsible-gambling oversight.
+
+**A manager** has a small console scoped to their own book: their balance, the
+players they created (create, generate a new password, suspend, sell credit) and
+their own transactions. A manager cannot see another manager's players, the audit
+log or any platform setting — the services enforce that, not just the menu.
 
 **Underneath:** money is integer millimes in a `BigInt` ledger that the database
 itself refuses to overdraw or rewrite; every state change writes an audit row in
@@ -52,13 +66,14 @@ Requires Node 22+. No database server needed locally (SQLite).
 
 ```bash
 npm install
-cp .env.example .env.local     # set SESSION_SECRET, PII_HASH_SALT and ADMIN_EMAIL / ADMIN_PASSWORD
+cp .env.example .env.local     # set SESSION_SECRET, PII_HASH_SALT, ADMIN_USERNAME / ADMIN_PASSWORD
 npm run db:deploy              # create dev.db and apply migrations
-npm run db:seed                # create the first administrator
+npm run db:seed                # create the superadmin
 npm run dev                    # http://localhost:3000
 ```
 
-Sign in at `/login` as the administrator (you must change the password first).
+Sign in at `/login` as the superadmin (you must change the password first), create a
+manager under **Managers**, issue them credit, then sign in as the manager and create a player.
 Full setup, scripts and the Vercel / PostgreSQL deployment steps are in
 [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
@@ -67,10 +82,10 @@ Full setup, scripts and the Vercel / PostgreSQL deployment steps are in
 | `npm run dev` / `build` / `start` | Development server / production build / serve it |
 | `npm run typecheck` · `lint` | `tsc --noEmit` · ESLint |
 | `npm run test:unit` | Settlement, period, CSV and fairness tests |
-| `npm run test:integration` | 216 end-to-end checks against a running server (auth, RBAC, ledger, concurrency, withdrawals, casino, pages, audit) |
+| `npm run test:integration` | 258 end-to-end checks against a running server (auth, RBAC, manager scoping, the credit chain, ledger, concurrency, withdrawals, casino, pages, audit) |
 | `npm run verify` | Typecheck → client-boundary check → i18n audit → unit tests → production build |
 | `npm run db:deploy` · `db:migrate` · `db:seed` · `db:studio` | Migrations, seed, data browser |
-| `npm run admin:recovery-link -- <email>` | Break-glass single-use reset link for an administrator |
+| `npm run admin:recovery-link -- <username>` | Break-glass single-use reset link for the superadmin |
 
 ## Stack
 

@@ -4,8 +4,10 @@ import type { Prisma } from "@prisma/client";
 
 import { prisma } from "@/server/db";
 import { requirePermission } from "@/server/auth/guard";
+import { roleFromDb } from "@/server/auth/roles";
 import { clampPage, cleanSearch, containsCI } from "@/server/repositories/filters";
 import type { Paginated } from "@/types";
+import type { UserRole } from "@/types/user";
 
 /**
  * Read access to the audit trail. There is deliberately no write, update or
@@ -39,7 +41,7 @@ export interface AuditLogRow {
   description: string;
   actorId: string | null;
   actorUsername: string | null;
-  actorRole: "player" | "admin" | null;
+  actorRole: UserRole | null;
   targetUserId: string | null;
   targetUsername: string | null;
   transactionId: string | null;
@@ -108,7 +110,7 @@ export async function listAuditLogs(query: AuditLogQuery = {}): Promise<Paginate
       description: row.description,
       actorId: row.actorId,
       actorUsername: row.actor?.username ?? null,
-      actorRole: row.actorRole ? (row.actorRole.toLowerCase() as "player" | "admin") : null,
+      actorRole: row.actorRole ? roleFromDb(row.actorRole) : null,
       targetUserId: row.targetUserId,
       targetUsername: row.target?.username ?? null,
       transactionId: row.transactionId,
@@ -136,11 +138,11 @@ export async function listAuditActions(): Promise<string[]> {
   return rows.map((row) => row.action);
 }
 
-/** Administrators who appear in the log, for the "Admin" filter. */
+/** Operators (superadmin and managers), for the "Admin" filter. */
 export async function listAuditActors(): Promise<Array<{ id: string; username: string }>> {
   await requirePermission("audit.read");
   return prisma.user.findMany({
-    where: { role: "ADMIN" },
+    where: { role: { in: ["SUPERADMIN", "MANAGER"] } },
     select: { id: true, username: true },
     orderBy: { username: "asc" },
     take: 100,

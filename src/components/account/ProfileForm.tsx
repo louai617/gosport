@@ -10,11 +10,10 @@ import { Input } from "@/components/ui/Input";
 
 export interface ProfileFormProps {
   displayName: string;
-  phone: string;
 }
 
-/** The two fields a player may change themselves; everything else is an operator decision. */
-export function ProfileForm({ displayName, phone }: ProfileFormProps) {
+/** The one field a player may change themselves; everything else is an operator decision. */
+export function ProfileForm({ displayName }: ProfileFormProps) {
   const t = useT();
   const { state, pending, formProps } = useFormAction(updateProfileAction);
 
@@ -34,15 +33,6 @@ export function ProfileForm({ displayName, phone }: ProfileFormProps) {
           required
           label={t("account.profile.displayName")}
           error={fieldError("displayName")}
-        />
-        <Input
-          name="phone"
-          type="tel"
-          inputMode="tel"
-          defaultValue={phone}
-          required
-          label={t("auth.field.phone")}
-          error={fieldError("phone")}
         />
       </div>
 

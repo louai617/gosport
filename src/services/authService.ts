@@ -1,8 +1,6 @@
 import "server-only";
 
-import { JURISDICTION } from "@/config/app.config";
-import { getRequestLocale } from "@/i18n/server";
-import { isUniqueViolation, prisma, transact, type Tx } from "@/server/db";
+import { prisma, transact, type Tx } from "@/server/db";
 import { env } from "@/server/env";
 import { requireUser } from "@/server/auth/guard";
 import { createHasher, verifyAgainstDummy } from "@/server/auth/password";
@@ -15,15 +13,13 @@ import {
   revokeSessionById,
   rotateSession,
 } from "@/server/auth/session";
+import { roleFromDb } from "@/server/auth/roles";
 import { hashToken, newToken } from "@/server/auth/tokens";
-import { ensureWallet } from "@/server/wallet/ledger";
 import { notifyAdmins, notifyUser } from "@/server/notifications/notify";
-import { sendSecureLink } from "@/server/notifications/transport";
 import { audit } from "@/server/security/audit";
-import { hashEmail } from "@/server/security/redact";
 import { getRequestMeta } from "@/server/security/requestMeta";
 import { getSetting } from "@/server/settings/settingsService";
-import type { LoginInput, RegisterInput } from "@/lib/validation";
+import type { LoginInput } from "@/lib/validation";
 import type { SessionUser } from "@/types/user";
 import { sessionUserInclude, toSessionUser } from "@/server/auth/sessionUser";
 
@@ -56,8 +52,6 @@ export type LoginResult = LoginSuccess | AuthFailure;
 
 const INVALID_CREDENTIALS = "auth.error.invalidCredentials";
 
-const RESET_TTL_MS = 30 * 60 * 1000;
-export const INVITATION_TTL_MS = 72 * 3600 * 1000;
 
 /* ------------------------------------------------------------ password policy */
 
@@ -77,114 +71,8 @@ export async function passwordPolicyError(password: string): Promise<string | nu
   return null;
 }
 
-/* ------------------------------------------------------------------- register */
-
-function declaredAge(isoDate: string, now = new Date()): number {
-  const [year, month, day] = isoDate.split("-").map(Number);
-  if (!year || !month || !day) return Number.NaN;
-  const beforeBirthday =
-    now.getUTCMonth() + 1 < month || (now.getUTCMonth() + 1 === month && now.getUTCDate() < day);
-  return now.getUTCFullYear() - year - (beforeBirthday ? 1 : 0);
-}
-
 export async function maintenanceBlocksPlayers(): Promise<boolean> {
   return getSetting("general.maintenanceMode");
-}
-
-/**
- * Creates a player. Registration is a **self-declaration**: nothing here
- * verifies identity or age, and the account stays `kycStatus: NOT_STARTED` until
- * an operator (or, in a licensed deployment, a verification provider) says
- * otherwise.
- */
-export async function registerPlayer(
-  input: RegisterInput,
-): Promise<LoginResult> {
-  if (!(await getSetting("players.registrationEnabled"))) {
-    return { ok: false, errorKey: "auth.error.registrationClosed" };
-  }
-  if (await maintenanceBlocksPlayers()) {
-    return { ok: false, errorKey: "auth.error.maintenance" };
-  }
-
-  const age = declaredAge(input.dateOfBirth);
-  if (!Number.isFinite(age) || age < JURISDICTION.legalAge) {
-    return { ok: false, errorKey: "auth.validation.dobUnderage", fieldErrors: { dateOfBirth: "auth.validation.dobUnderage" } };
-  }
-
-  const policy = await passwordPolicyError(input.password);
-  if (policy) return { ok: false, errorKey: policy, fieldErrors: { password: policy } };
-
-  const taken = await prisma.user.findFirst({
-    where: { OR: [{ email: input.email }, { username: input.username }] },
-    select: { email: true, username: true },
-  });
-  if (taken) {
-    const fieldErrors: Record<string, string> = {};
-    if (taken.email === input.email) fieldErrors.email = "auth.validation.emailTaken";
-    if (taken.username === input.username) fieldErrors.username = "auth.validation.usernameTaken";
-    return { ok: false, errorKey: "common.error.checkFields", fieldErrors };
-  }
-
-  const passwordHash = await createHasher().hash(input.password);
-  const locale = await getRequestLocale();
-  const now = new Date();
-
-  try {
-    const user = await transact(async (tx) => {
-      const created = await tx.user.create({
-        data: {
-          username: input.username,
-          email: input.email,
-          phone: input.phone,
-          passwordHash,
-          role: "PLAYER",
-          status: "ACTIVE",
-          profile: {
-            create: {
-              displayName: `${input.firstName} ${input.lastName.charAt(0)}.`,
-              firstName: input.firstName,
-              lastName: input.lastName,
-              dateOfBirth: new Date(`${input.dateOfBirth}T00:00:00.000Z`),
-              countryCode: input.country,
-              locale,
-              ageDeclaredAt: now,
-              termsAcceptedAt: now,
-              marketingOptIn: input.marketingOptIn ?? false,
-            },
-          },
-        },
-        include: sessionUserInclude(now),
-      });
-      await ensureWallet(tx, created.id);
-      await audit({
-        tx,
-        action: "auth.register",
-        actor: { id: created.id, role: "player" },
-        targetUserId: created.id,
-        targetType: "user",
-        targetId: created.id,
-        description: `Player ${created.username} registered`,
-      });
-      await notifyAdmins({
-        tx,
-        kind: "new_player",
-        titleKey: "notify.newPlayer.title",
-        bodyKey: "notify.newPlayer.body",
-        params: { username: created.username },
-        href: `/admin/players/${created.id}`,
-      });
-      return created;
-    });
-
-    return { ok: true, user: toSessionUser(user) };
-  } catch (error) {
-    if (isUniqueViolation(error)) {
-      // Lost a race with a concurrent registration for the same address/handle.
-      return { ok: false, errorKey: "auth.error.registrationConflict" };
-    }
-    throw error;
-  }
 }
 
 /* ---------------------------------------------------------------------- login */
@@ -203,11 +91,10 @@ export async function registerPlayer(
 export async function loginUser(input: LoginInput): Promise<LoginResult> {
   const meta = await getRequestMeta();
   const identifier = input.identifier;
-  const isEmail = identifier.includes("@");
   const now = new Date();
 
   const user = await prisma.user.findFirst({
-    where: isEmail ? { email: identifier } : { username: identifier },
+    where: { username: identifier },
     include: sessionUserInclude(now),
   });
 
@@ -220,10 +107,10 @@ export async function loginUser(input: LoginInput): Promise<LoginResult> {
     await audit({
       action: "auth.login_failed",
       outcome: "failure",
-      actor: actorId ? { id: actorId, role: user?.role === "ADMIN" ? "admin" : "player" } : null,
+      actor: actorId ? { id: actorId, role: roleFromDb(user?.role ?? "PLAYER") } : null,
       targetUserId: actorId,
       description: `Failed sign-in (${reason})`,
-      metadata: { reason, identifier: isEmail ? hashEmail(identifier) : "username-supplied" },
+      metadata: { reason },
     });
     return { ok: false, errorKey, ...extra };
   };
@@ -272,14 +159,14 @@ export async function loginUser(input: LoginInput): Promise<LoginResult> {
         titleKey: "notify.accountLocked.title",
         bodyKey: "notify.accountLocked.body",
         params: { username: user.username },
-        href: `/admin/players/${user.id}`,
+        href: user.role === "MANAGER" ? `/admin/managers/${user.id}` : `/admin/players/${user.id}`,
       });
     }
     return failure("wrong_password", user.id);
   }
 
   // Credentials are correct from here on, so state-specific messages are safe.
-  if (user.status === "PENDING") return failure("invitation_pending", user.id);
+  if (user.status === "PENDING") return failure("not_activated", user.id);
   if (user.status === "SUSPENDED") {
     return failure("suspended", user.id, "auth.error.accountSuspended");
   }
@@ -312,7 +199,7 @@ export async function loginUser(input: LoginInput): Promise<LoginResult> {
     targetUserId: user.id,
     targetType: "user",
     targetId: user.id,
-    description: `${user.role === "ADMIN" ? "Administrator" : "Player"} ${user.username} signed in`,
+    description: `${sessionUser.role[0]!.toUpperCase()}${sessionUser.role.slice(1)} ${user.username} signed in`,
   });
 
   return { ok: true, user: sessionUser };
@@ -438,46 +325,6 @@ export function passwordLink(token: string): string {
   return `${env.APP_URL.replace(/\/$/, "")}/reset-password?token=${encodeURIComponent(token)}`;
 }
 
-/**
- * Starts a self-service reset. The response never depends on whether the
- * address is known — a different answer per address is an enumeration oracle.
- * Delivery goes through the configured transport; with none configured (the
- * production default here) nothing is sent and an administrator can issue the
- * link instead.
- */
-export async function requestPasswordReset(email: string): Promise<{ ok: true }> {
-  const user = await prisma.user.findUnique({ where: { email } });
-
-  if (user && (user.status === "ACTIVE" || user.status === "SELF_EXCLUDED")) {
-    const token = await transact((tx) =>
-      issuePasswordToken(tx, { userId: user.id, purpose: "PASSWORD_RESET", ttlMs: RESET_TTL_MS }),
-    );
-    const delivery = await sendSecureLink({
-      kind: "password_reset",
-      to: { email: user.email, phone: user.phone },
-      link: passwordLink(token),
-    });
-    await audit({
-      action: "auth.password_reset_requested",
-      actor: null,
-      targetUserId: user.id,
-      description: delivery.delivered
-        ? "Password reset link issued and handed to the delivery transport"
-        : "Password reset link issued but NO delivery transport is configured",
-      metadata: { delivered: delivery.delivered, transport: delivery.transport },
-    });
-  } else {
-    await audit({
-      action: "auth.password_reset_requested",
-      actor: null,
-      description: "Password reset requested for an unknown or ineligible address",
-      metadata: { email: hashEmail(email) },
-    });
-  }
-
-  return { ok: true };
-}
-
 export interface TokenInspection {
   valid: boolean;
   purpose?: "PASSWORD_RESET" | "INVITATION";
@@ -524,16 +371,13 @@ export async function completePasswordReset(
         mustChangePassword: false,
         failedLoginCount: 0,
         lockedUntil: null,
-        // Following a link sent to the address proves control of it.
-        emailVerifiedAt: row.user.emailVerifiedAt ?? now,
-        // Accepting an invitation activates the account.
         ...(row.user.status === "PENDING" ? { status: "ACTIVE" as const } : {}),
       },
     });
     await audit({
       tx,
       action: "auth.password_reset_completed",
-      actor: { id: row.userId, role: row.user.role === "ADMIN" ? "admin" : "player" },
+      actor: { id: row.userId, role: roleFromDb(row.user.role) },
       targetUserId: row.userId,
       description:
         row.purpose === "INVITATION"

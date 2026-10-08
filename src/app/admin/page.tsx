@@ -16,6 +16,8 @@ import {
   Wallet,
 } from "lucide-react";
 import { flattenParams } from "@/lib/adminQueries";
+import { requirePageAdmin } from "@/server/auth/pageGuard";
+import { ManagerHome } from "@/components/admin/ManagerHome";
 import { periodQuerySchema } from "@/lib/adminValidation";
 import { formatAmount, formatNumber } from "@/lib/format";
 import { getAdminT, getRequestLocale } from "@/i18n/server";
@@ -33,7 +35,7 @@ interface PageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-export default async function AdminDashboard({ searchParams }: PageProps) {
+async function SuperadminDashboard({ searchParams }: PageProps) {
   const parsed = periodQuerySchema.safeParse(flattenParams(await searchParams));
   const query = parsed.success ? parsed.data : periodQuerySchema.parse({});
 
@@ -312,4 +314,10 @@ function PendingLink({
       <StatTile label={label} value={value} hint={hint} tone={hot ? "warning" : "default"} />
     </Link>
   );
+}
+
+/** Superadmin sees the platform; a manager sees their own book. */
+export default async function AdminDashboard(props: PageProps) {
+  const user = await requirePageAdmin();
+  return user.role === "manager" ? <ManagerHome /> : <SuperadminDashboard {...props} />;
 }

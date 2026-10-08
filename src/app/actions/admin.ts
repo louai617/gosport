@@ -5,26 +5,28 @@ import { revalidatePath } from "next/cache";
 import type { ActionState } from "@/lib/actionState";
 import {
   adjustmentSchema,
+  createManagerSchema,
   createPlayerSchema,
+  creditSchema,
   decisionSchema,
   playerActionSchema,
+  resetCredentialsSchema,
   restrictionsSchema,
   settleBetSchema,
-  updatePlayerSchema,
   verificationSchema,
 } from "@/lib/adminValidation";
 import { guarded, readBoolean, text, zodFieldErrors } from "@/server/actions";
 import { updateSettings } from "@/server/settings/settingsService";
+import { createManagerAccount, createPlayerAccount, resetCredentials } from "@/services/accountService";
+import { issueCreditToManager, sellCreditToPlayer } from "@/services/creditService";
 import {
-  createCredentialLink,
-  createPlayer,
+  changeStatus,
   lockPlayer,
   reactivatePlayer,
   revokePlayerSessions,
   setPlayerRestrictions,
   setPlayerVerification,
   suspendPlayer,
-  updatePlayer,
 } from "@/services/playerAdminService";
 import { adjustWallet, decideAdjustment, processWithdrawal } from "@/services/walletAdminService";
 import { settleBet } from "@/services/bettingService";
@@ -47,6 +49,20 @@ function done(paths: string[], state: ActionState): ActionState {
 
 /* ---------------------------------------------------------------- players */
 
+/** What a creation form hands back so the page can show the credentials once. */
+function credentialsData(result: {
+  accountId?: string;
+  credentials?: { username: string; password: string };
+  creditedAmount?: number;
+}) {
+  return {
+    accountId: result.accountId ?? null,
+    username: result.credentials?.username ?? null,
+    password: result.credentials?.password ?? null,
+    credited: result.creditedAmount ?? null,
+  };
+}
+
 export async function createPlayerAction(
   _previous: ActionState,
   formData: FormData,
@@ -54,57 +70,145 @@ export async function createPlayerAction(
   return guarded("admin.createPlayer", async () => {
     const parsed = createPlayerSchema.safeParse({
       username: text(formData, "username"),
-      email: text(formData, "email"),
-      phone: text(formData, "phone"),
-      firstName: text(formData, "firstName"),
-      lastName: text(formData, "lastName"),
-      country: text(formData, "country"),
-      locale: text(formData, "locale") || "fr",
-      credentialMode: text(formData, "credentialMode"),
-      temporaryPassword: text(formData, "temporaryPassword"),
+      displayName: text(formData, "displayName"),
+      initialCredit: text(formData, "initialCredit"),
+      idempotencyKey: text(formData, "idempotencyKey") || undefined,
     });
     if (!parsed.success) return { ok: false, fieldErrors: zodFieldErrors(parsed.error) };
 
-    const result = await createPlayer(parsed.data);
+    const result = await createPlayerAccount(parsed.data);
     if (!result.ok) {
       return { ok: false, messageKey: result.errorKey, fieldErrors: result.fieldErrors };
     }
-    return done(["/admin/players"], {
+    return done(["/admin/players", "/admin"], {
       ok: true,
       messageKey: "admin.players.created",
+      data: credentialsData(result),
+    });
+  });
+}
+
+export async function createManagerAction(
+  _previous: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  return guarded("admin.createManager", async () => {
+    const parsed = createManagerSchema.safeParse({
+      username: text(formData, "username"),
+      displayName: text(formData, "displayName"),
+      initialCredit: text(formData, "initialCredit"),
+      idempotencyKey: text(formData, "idempotencyKey") || undefined,
+    });
+    if (!parsed.success) return { ok: false, fieldErrors: zodFieldErrors(parsed.error) };
+
+    const result = await createManagerAccount(parsed.data);
+    if (!result.ok) {
+      return { ok: false, messageKey: result.errorKey, fieldErrors: result.fieldErrors };
+    }
+    return done(["/admin/managers", "/admin"], {
+      ok: true,
+      messageKey: "admin.managers.created",
+      data: credentialsData(result),
+    });
+  });
+}
+
+/** Replaces a player's or manager's password with a generated one, shown once. */
+export async function resetCredentialsAction(
+  _previous: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  return guarded("admin.resetCredentials", async () => {
+    const kind = text(formData, "kind") === "manager" ? "manager" : "player";
+    const parsed = resetCredentialsSchema.safeParse({
+      accountId: text(formData, "accountId"),
+      confirm: readBoolean(formData.get("confirm")),
+    });
+    if (!parsed.success) return { ok: false, fieldErrors: zodFieldErrors(parsed.error) };
+
+    const result = await resetCredentials(parsed.data.accountId, kind);
+    if (!result.ok) return { ok: false, messageKey: result.errorKey };
+    return done([`/admin/${kind === "manager" ? "managers" : "players"}/${parsed.data.accountId}`], {
+      ok: true,
+      messageKey: "admin.credentials.reset",
       data: {
-        playerId: result.playerId ?? null,
-        username: result.username ?? null,
-        invitationLink: result.invitationLink ?? null,
-        delivered: result.delivered ?? false,
+        accountId: parsed.data.accountId,
+        username: result.credentials?.username ?? null,
+        password: result.credentials?.password ?? null,
       },
     });
   });
 }
 
-export async function updatePlayerAction(
+/** Superadmin → manager, or manager → player, depending on `direction`. */
+async function creditAction(direction: "issue" | "sell", formData: FormData): Promise<ActionState> {
+  const parsed = creditSchema.safeParse({
+    accountId: text(formData, "accountId"),
+    amount: text(formData, "amount"),
+    note: text(formData, "note") || undefined,
+    idempotencyKey: text(formData, "idempotencyKey") || undefined,
+  });
+  if (!parsed.success) return { ok: false, fieldErrors: zodFieldErrors(parsed.error) };
+
+  const result =
+    direction === "issue" ? await issueCreditToManager(parsed.data) : await sellCreditToPlayer(parsed.data);
+  if (!result.ok) {
+    return { ok: false, messageKey: result.errorKey, fieldErrors: result.fieldErrors };
+  }
+  return done(
+    [
+      `/admin/${direction === "issue" ? "managers" : "players"}/${parsed.data.accountId}`,
+      "/admin/managers",
+      "/admin/players",
+      "/admin/transactions",
+      "/admin",
+    ],
+    {
+      ok: true,
+      messageKey: direction === "issue" ? "admin.credit.issued" : "admin.credit.sold",
+      data: {
+        reference: result.reference ?? null,
+        senderBalance: result.senderBalance ?? null,
+        recipientBalance: result.recipientBalance ?? null,
+      },
+    },
+  );
+}
+
+export async function issueCreditAction(_previous: ActionState, formData: FormData): Promise<ActionState> {
+  return guarded("admin.issueCredit", () => creditAction("issue", formData));
+}
+
+export async function sellCreditAction(_previous: ActionState, formData: FormData): Promise<ActionState> {
+  return guarded("admin.sellCredit", () => creditAction("sell", formData));
+}
+
+export async function managerStatusAction(
   _previous: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  return guarded("admin.updatePlayer", async () => {
-    const parsed = updatePlayerSchema.safeParse({
+  return guarded("admin.managerStatus", async () => {
+    const intent = text(formData, "intent");
+    const parsed = playerActionSchema.safeParse({
       playerId: text(formData, "playerId"),
-      email: text(formData, "email"),
-      phone: text(formData, "phone"),
-      firstName: text(formData, "firstName"),
-      lastName: text(formData, "lastName"),
-      displayName: text(formData, "displayName"),
-      country: text(formData, "country"),
-      locale: text(formData, "locale"),
       reason: text(formData, "reason"),
+      confirm: readBoolean(formData.get("confirm")),
     });
     if (!parsed.success) return { ok: false, fieldErrors: zodFieldErrors(parsed.error) };
+    if (intent !== "suspend" && intent !== "reactivate") {
+      return { ok: false, messageKey: "common.validation.invalid" };
+    }
 
-    const result = await updatePlayer(parsed.data);
-    return done([`/admin/players/${parsed.data.playerId}`], {
+    const result = await changeStatus(
+      parsed.data.playerId,
+      intent === "suspend" ? "SUSPENDED" : "ACTIVE",
+      parsed.data.reason,
+      "managers.update",
+      "manager",
+    );
+    return done([`/admin/managers/${parsed.data.playerId}`, "/admin/managers"], {
       ok: result.ok,
-      messageKey: result.ok ? "admin.players.updated" : result.errorKey,
-      fieldErrors: result.fieldErrors,
+      messageKey: result.ok ? `admin.players.${intent}Done` : result.errorKey,
     });
   });
 }
@@ -192,18 +296,6 @@ export async function revokeSessionsAction(
       messageKey: result.ok ? "admin.players.sessionsRevoked" : result.errorKey,
       data: { revoked: result.revoked ?? 0 },
     });
-  });
-}
-
-export async function credentialLinkAction(
-  _previous: ActionState,
-  formData: FormData,
-): Promise<ActionState> {
-  return guarded("admin.credentialLink", async () => {
-    const result = await createCredentialLink(text(formData, "playerId"));
-    return result.ok
-      ? { ok: true, messageKey: "admin.players.linkCreated", data: { link: result.link ?? null } }
-      : { ok: false, messageKey: result.errorKey };
   });
 }
 

@@ -16,33 +16,6 @@ export function buildPromotions(nowMs: number): Promotion[] {
 
   return [
     {
-      id: "promo-welcome",
-      slug: "welcome-offer",
-      kind: "welcome",
-      titleKey: "promo.welcome-offer.title",
-      summaryKey: "promo.welcome-offer.summary",
-      descriptionKey: "promo.welcome-offer.description",
-      eligibilityKeys: [
-        "promo.welcome-offer.eligibility.1",
-        "promo.welcome-offer.eligibility.2",
-        "promo.welcome-offer.eligibility.3",
-      ],
-      termsKeys: [
-        "promo.welcome-offer.terms.1",
-        "promo.welcome-offer.terms.2",
-        "promo.welcome-offer.terms.3",
-        "promo.welcome-offer.terms.4",
-      ],
-      status: "active",
-      startsAt: iso(-30),
-      endsAt: null,
-      ctaHref: "/register",
-      ctaLabelKey: "promo.cta.createAccount",
-      hue: 224,
-      featured: true,
-      simulated: true,
-    },
-    {
       id: "promo-ligue1",
       slug: "ligue1-boost",
       kind: "sport",

@@ -1,6 +1,10 @@
 /** Identity, account and compliance-facing models. */
 
-export type UserRole = "player" | "admin";
+/**
+ * `superadmin` creates managers and issues them credit; `manager` creates
+ * players and sells them credit; `player` plays. There is no self-registration.
+ */
+export type UserRole = "player" | "manager" | "superadmin";
 
 export type KycStatus = "not_started" | "pending" | "verified" | "rejected" | "expired";
 
@@ -21,11 +25,8 @@ export interface User {
   id: string;
   username: string;
   displayName: string;
-  email: string;
   firstName: string;
   lastName: string;
-  /** E.164, e.g. +21620123456. */
-  phone: string;
   /** ISO-8601 date (no time). Used for the age gate. */
   dateOfBirth: string;
   countryCode: string;
@@ -42,14 +43,11 @@ export interface User {
   createdAt: string;
   lastLoginAt: string | null;
   twoFactorEnabled: boolean;
-  emailVerified: boolean;
-  phoneVerified: boolean;
 }
 
 export interface SessionUser {
   id: string;
   username: string;
-  email: string;
   displayName: string;
   firstName: string;
   lastName: string;
