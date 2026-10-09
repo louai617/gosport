@@ -106,7 +106,8 @@ const optionalLabel = z
   .pipe(displayNameSchema.optional());
 
 const optionalAmount = z
-  .union([z.string(), z.number(), z.undefined()])
+  .union([z.string(), z.number()])
+  .optional()
   .transform((value) => (value === "" || value === undefined ? undefined : value))
   .pipe(amountSchema.optional());
 

@@ -52,8 +52,9 @@ per-leg settlement, reports with CSV export, an immutable audit log, runtime
 settings and responsible-gambling oversight.
 
 **A manager** has a small console scoped to their own book: their balance, the
-players they created (create, generate a new password, suspend, sell credit) and
-their own transactions. A manager cannot see another manager's players, the audit
+players they created (create, generate a new password, suspend, sell credit, decide withdrawals) and
+their own transactions — and **they accept or reject their players' withdrawal requests**
+(the cashed-out credit returns to the manager's balance). A manager cannot see another manager's players, the audit
 log or any platform setting — the services enforce that, not just the menu.
 
 **Underneath:** money is integer millimes in a `BigInt` ledger that the database
@@ -82,7 +83,7 @@ Full setup, scripts and the Vercel / PostgreSQL deployment steps are in
 | `npm run dev` / `build` / `start` | Development server / production build / serve it |
 | `npm run typecheck` · `lint` | `tsc --noEmit` · ESLint |
 | `npm run test:unit` | Settlement, period, CSV and fairness tests |
-| `npm run test:integration` | 258 end-to-end checks against a running server (auth, RBAC, manager scoping, the credit chain, ledger, concurrency, withdrawals, casino, pages, audit) |
+| `npm run test:integration` | 273 end-to-end checks against a running server (auth, RBAC, manager scoping, the credit chain, ledger, concurrency, withdrawals, casino, pages, audit) |
 | `npm run verify` | Typecheck → client-boundary check → i18n audit → unit tests → production build |
 | `npm run db:deploy` · `db:migrate` · `db:seed` · `db:studio` | Migrations, seed, data browser |
 | `npm run admin:recovery-link -- <username>` | Break-glass single-use reset link for the superadmin |

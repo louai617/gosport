@@ -25,8 +25,8 @@ account is created by the one above it.
 - It does **not** process payments. A player cannot deposit. Credit is *issued* by the
   superadmin to a manager and *sold on* by the manager to a player — both audited, each
   a ledger entry; how the buyer pays the manager is outside the platform. A withdrawal
-  request holds the funds and the superadmin marks it paid after the operator has paid
-  out of band. No provider credential exists in the repo.
+  request holds the funds and the player's manager (or the superadmin) marks it paid after
+  paying out of band; the credit then returns to that manager. No provider credential exists in the repo.
 - It does **not** use a live odds feed. Events, markets and odds come from a
   deterministic dataset (`src/data`). Tickets are priced and settled on the server
   from that dataset, and the superadmin settles them per leg.

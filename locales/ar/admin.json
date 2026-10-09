@@ -505,5 +505,10 @@
   "admin.audit.action.admin.manager.created": "إنشاء مدير",
   "admin.audit.action.admin.account.credentials_reset": "إعادة توليد كلمة المرور",
   "admin.audit.action.admin.credit.issued": "منح رصيد لمدير",
-  "admin.audit.action.admin.credit.sold": "بيع رصيد للاعب"
+  "admin.audit.action.admin.credit.sold": "بيع رصيد للاعب",
+  "admin.nav.withdrawals": "السحوبات",
+  "admin.withdrawals.title": "طلبات السحب",
+  "admin.withdrawals.description": "لاعبون يطلبون سحب رصيدهم، الأقدم أولًا.",
+  "admin.withdrawals.noteManager": "وافق بعد أن تدفع للاعب. يعود رصيده المحجوز إلى رصيدك لتتمكن من بيعه مجددًا. ارفض لإعادة الرصيد إلى اللاعب.",
+  "admin.withdrawals.noteSuperadmin": "وافق بعد دفع المبلغ للاعب. إذا كان اللاعب تابعًا لمدير فيعود الرصيد إلى رصيد هذا المدير. ارفض لإعادة الرصيد إلى اللاعب."
 }

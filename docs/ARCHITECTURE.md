@@ -74,7 +74,7 @@ atomic debit, idempotent replay, and the audit row in the same transaction.
 | Issue credit | The superadmin credits a manager: one `ADMIN_CREDIT` entry (the only place credit is created). |
 | Sell credit | A manager sells to a player they created: a `CREDIT_TRANSFER` debit on the manager and a `DEPOSIT` credit on the player (linked by `relatedId`), one transaction, idempotent, subject to the player's deposit limits. The guarded debit means a manager cannot sell more than they hold. |
 | Manual adjustment | The superadmin can still record a credit or debit on a player with a reason; above `wallet.adjustmentApprovalThreshold` it becomes an `AdjustmentRequest` a *second* superadmin must approve. |
-| Withdrawal | The player requests → a `PENDING` `WITHDRAWAL` entry **holds** the funds. Admin approves (→ `COMPLETED`, the operator pays out of band) or rejects (→ `REVERSED` plus a `REFUND` entry referencing the original). A conditional claim prevents double processing. |
+| Withdrawal | The player requests → a `PENDING` `WITHDRAWAL` entry **holds** the funds, and the player's manager (and the superadmin) is notified. The manager — or the superadmin — approves once the player has been paid out of band (→ `COMPLETED`; the amount returns to the player's manager as a `CREDIT_TRANSFER` credit) or rejects (→ `REVERSED` plus a `REFUND` entry referencing the original). A conditional claim prevents double processing; a manager reaches only their own players' requests. |
 | Sportsbook bet | `bettingService` re-prices from the dataset, snapshots `BetLeg`s, debits the stake, writes the ticket — one transaction. An admin settles per leg; `lib/settlement.ts` computes the result. |
 | Casino round | `server/casino/*` opens a `Bet(kind CASINO)`, debits, draws from the player's committed seed and settles/continues on the server (see `GAMES.md`). |
 
@@ -113,6 +113,7 @@ The menu, the pages and the services are all filtered by role; the services are 
 | Managers | `/admin/managers`, `/new`, `/[id]` | Create (generated credentials, optional opening credit), issue credit, generate a new password, suspend/reactivate, recent movements, link to their players |
 | Players | `/admin/players`, `/new`, `/[id]` | All managers' players (filter by manager); detail tabs: overview, wallet, transactions, bets, activity, responsible gambling; suspend, lock, restrict, verify, revoke sessions, generate a new password |
 | Transactions | `/admin/transactions` | Filter by type, status, date, amount, player; CSV export |
+| Withdrawals | `/admin/withdrawals` | Every manager's players' pending requests (also in Wallet) |
 | Wallet | `/admin/wallet` | Adjustments, four-eyes approval queue, withdrawal queue |
 | Bets | `/admin/bets` | Sportsbook tickets and casino rounds; per-leg settlement |
 | Reports | `/admin/reports` | Deposits, withdrawals, bets, wins, net, active players; CSV |
@@ -125,6 +126,7 @@ The menu, the pages and the services are all filtered by role; the services are 
 |---|---|---|
 | Home | `/admin` | Balance (also pinned in the header), credit sold, players, recent movements |
 | Players | `/admin/players`, `/new`, `/[id]` | Only players they created; create (generated credentials, optional opening credit sold from their balance), sell credit, generate a new password, suspend/reactivate |
+| Withdrawals | `/admin/withdrawals` | Their players' pending requests: approve (credit returns to their balance) or reject |
 | Transactions | `/admin/transactions` | Their own wallet's movements and their players' |
 | Notifications, Security | … | Their own |
 

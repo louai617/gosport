@@ -131,7 +131,7 @@ and the generated client open).
 
 ## Verification status
 
-The full integration suite (258 checks: auth, RBAC, manager scoping, the credit chain,
+The full integration suite (273 checks: auth, RBAC, manager scoping, the credit chain,
 ledger, concurrency, withdrawals, four-eyes, casino rounds, page protection, audit, reports) passes
 against SQLite on both the dev server and a production build, and against
 PostgreSQL **using Prisma's embedded server (`prisma dev`, PGlite) with a

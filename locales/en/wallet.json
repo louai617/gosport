@@ -86,5 +86,6 @@
   "wallet.tx.creditTransfer": "Credit sold to a player",
   "wallet.tx.creditIssued": "Credit from the superadmin",
   "wallet.tx.creditFromManager": "Credit from your manager",
-  "wallet.kind.credit_transfer": "Credit sold"
+  "wallet.kind.credit_transfer": "Credit sold",
+  "wallet.tx.creditBoughtBack": "Credit returned by a player"
 }

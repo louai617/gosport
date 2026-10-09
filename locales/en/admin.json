@@ -505,5 +505,10 @@
   "admin.audit.action.admin.manager.created": "Manager created",
   "admin.audit.action.admin.account.credentials_reset": "Password regenerated",
   "admin.audit.action.admin.credit.issued": "Credit issued to a manager",
-  "admin.audit.action.admin.credit.sold": "Credit sold to a player"
+  "admin.audit.action.admin.credit.sold": "Credit sold to a player",
+  "admin.nav.withdrawals": "Withdrawals",
+  "admin.withdrawals.title": "Withdrawal requests",
+  "admin.withdrawals.description": "Players asking to cash out their credit, oldest first.",
+  "admin.withdrawals.noteManager": "Approve once you have paid the player. Their held credit then returns to your balance so you can sell it again. Reject to give the credit back to the player.",
+  "admin.withdrawals.noteSuperadmin": "Approve once the player has been paid. If the player belongs to a manager, the credit returns to that manager's balance. Reject to give the credit back to the player."
 }

@@ -6,7 +6,7 @@ import { fromBig, toMillimes } from "@/lib/money";
 import { isUniqueViolation, prisma, transact } from "@/server/db";
 import { isDemo } from "@/server/env";
 import { requireUser } from "@/server/auth/guard";
-import { notifyAdmins } from "@/server/notifications/notify";
+import { notifyAdmins, notifyUser } from "@/server/notifications/notify";
 import { audit } from "@/server/security/audit";
 import {
   listPlayerTransactions,
@@ -328,14 +328,21 @@ export async function createWithdrawal(
           description: `Withdrawal of ${input.amount.toFixed(3)} ${JURISDICTION.currency} requested`,
           metadata: { amountMillimes: millimes, methodId: input.methodId },
         });
-        await notifyAdmins({
+        const notice = {
           tx,
-          kind: "withdrawal_request",
+          kind: "withdrawal_request" as const,
           titleKey: "notify.withdrawalRequest.title",
           bodyKey: "notify.withdrawalRequest.body",
           params: { username: user.username, amount: input.amount.toFixed(2) },
-          href: `/admin/transactions?status=pending&type=withdrawal`,
+          href: "/admin/withdrawals",
+        };
+        await notifyAdmins(notice);
+        // …and the manager the player belongs to, who is the one who pays them out.
+        const owner = await tx.user.findUnique({
+          where: { id: user.id },
+          select: { createdBy: { select: { id: true, role: true } } },
         });
+        if (owner?.createdBy?.role === "MANAGER") await notifyUser(owner.createdBy.id, notice);
       }
       return entry;
     });

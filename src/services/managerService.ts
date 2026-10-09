@@ -109,7 +109,7 @@ export async function getManagerDetail(id: string): Promise<ManagerDetail | null
 
   const [issued, sold, sessions] = await Promise.all([
     prisma.transaction.aggregate({ where: { userId: id, type: "ADMIN_CREDIT" }, _sum: { amount: true } }),
-    prisma.transaction.aggregate({ where: { userId: id, type: "CREDIT_TRANSFER" }, _sum: { amount: true } }),
+    prisma.transaction.aggregate({ where: { userId: id, type: "CREDIT_TRANSFER", amount: { lt: 0n } }, _sum: { amount: true } }),
     prisma.session.count({
       where: { userId: id, revokedAt: null, idleExpiresAt: { gt: now }, absoluteExpiresAt: { gt: now } },
     }),

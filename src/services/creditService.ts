@@ -264,12 +264,12 @@ export async function getManagerSummary(): Promise<ManagerSummary> {
     prisma.user.count({ where: managedPlayerWhere(actor) }),
     prisma.user.count({ where: { ...managedPlayerWhere(actor), status: "ACTIVE" } }),
     prisma.transaction.aggregate({
-      where: { userId: actor.id, type: "CREDIT_TRANSFER" },
+      where: { userId: actor.id, type: "CREDIT_TRANSFER", amount: { lt: 0n } },
       _sum: { amount: true },
       _count: true,
     }),
     prisma.transaction.aggregate({
-      where: { userId: actor.id, type: "CREDIT_TRANSFER", createdAt: { gte: since } },
+      where: { userId: actor.id, type: "CREDIT_TRANSFER", amount: { lt: 0n }, createdAt: { gte: since } },
       _sum: { amount: true },
     }),
   ]);

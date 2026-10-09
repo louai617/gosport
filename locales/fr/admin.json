@@ -505,5 +505,10 @@
   "admin.audit.action.admin.manager.created": "Gestionnaire créé",
   "admin.audit.action.admin.account.credentials_reset": "Mot de passe régénéré",
   "admin.audit.action.admin.credit.issued": "Crédit attribué à un gestionnaire",
-  "admin.audit.action.admin.credit.sold": "Crédit vendu à un joueur"
+  "admin.audit.action.admin.credit.sold": "Crédit vendu à un joueur",
+  "admin.nav.withdrawals": "Retraits",
+  "admin.withdrawals.title": "Demandes de retrait",
+  "admin.withdrawals.description": "Joueurs qui demandent à encaisser leur crédit, les plus anciennes d’abord.",
+  "admin.withdrawals.noteManager": "Approuvez une fois le joueur payé. Son crédit bloqué revient alors sur votre solde pour être revendu. Rejetez pour rendre le crédit au joueur.",
+  "admin.withdrawals.noteSuperadmin": "Approuvez une fois le joueur payé. Si le joueur dépend d’un gestionnaire, le crédit revient sur le solde de ce gestionnaire. Rejetez pour rendre le crédit au joueur."
 }

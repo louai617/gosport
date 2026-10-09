@@ -86,5 +86,6 @@
   "wallet.tx.creditTransfer": "رصيد مُباع للاعب",
   "wallet.tx.creditIssued": "رصيد من المشرف العام",
   "wallet.tx.creditFromManager": "رصيد من مديرك",
-  "wallet.kind.credit_transfer": "رصيد مُباع"
+  "wallet.kind.credit_transfer": "رصيد مُباع",
+  "wallet.tx.creditBoughtBack": "رصيد أعاده لاعب"
 }

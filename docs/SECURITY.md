@@ -60,7 +60,8 @@ name at a call site; adding a staff role is a schema member plus one row in that
 - **Superadmin:** every permission except `credit.distribute` (selling out of a balance
   is a manager's act; the superadmin issues credit instead, `credit.issue`).
 - **Manager:** `admin.access`, `players.read/create/suspend/credentials`,
-  `transactions.read`, `notifications.read`, `credit.distribute` — nothing else. No
+  `transactions.read`, `notifications.read`, `credit.distribute`, `withdrawals.process` (their
+  own players' requests only) — nothing else. No
   dashboard, audit log, settings, reports, bets, wallet adjustments, withdrawal queue or
   other managers.
 - **Scope.** A permission says the role may do the thing; **scope says to whom**.
@@ -103,6 +104,13 @@ A sale is two ledger entries (the manager's debit through the guarded atomic upd
 player's `DEPOSIT` credit, linked by `relatedId`) in one database transaction, idempotent
 on a client key, subject to the player's own deposit limits, and audited. A manager can
 never sell more than they hold, however many requests race.
+
+The chain runs back up on a withdrawal: when a request is **approved**, the player's held funds
+leave the platform and the same amount returns to the player's manager as a `CREDIT_TRANSFER`
+credit (so credit a manager sold is never silently destroyed); **rejecting** returns the funds to
+the player. A manager decides only their own players' requests (anyone else's is "not found");
+the superadmin can decide any, and the credit still goes to the player's manager. A player created
+by the superadmin has no manager, so approving credits nobody.
 
 ---
 

@@ -65,6 +65,8 @@ const MANAGER_PERMISSIONS: readonly Permission[] = [
   "transactions.read",
   "notifications.read",
   "credit.distribute",
+  // …and decide the withdrawal requests of those same players (scoped in the service).
+  "withdrawals.process",
 ];
 
 export const ROLE_PERMISSIONS: Readonly<Record<UserRole, ReadonlySet<Permission>>> = {

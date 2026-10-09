@@ -388,6 +388,28 @@ export async function decideAdjustment(
 
 /* --------------------------------------------------------- withdrawal queue */
 
+/**
+ * A withdrawal is the credit going back up the chain. The player's held funds leave
+ * the platform when the payout is approved — and if the player belongs to a manager,
+ * the same amount returns to that manager's balance, so credit a manager sold is
+ * never silently destroyed. Whoever approves says the player has been paid out of
+ * band. A manager decides only their own players' requests; the superadmin can
+ * decide any (the credit still goes back to the player's manager).
+ */
+
+/** Pending requests the caller may decide: all of them for the superadmin, their own players' for a manager. */
+export async function getPendingWithdrawals() {
+  await requirePermission("withdrawals.process");
+  // `getAdminTransactions` scopes a manager to their book; the filter does the rest.
+  return (await import("./adminService")).getAdminTransactions({
+    kind: "withdrawal",
+    status: "pending",
+    sort: "createdAt",
+    direction: "asc",
+    pageSize: 100,
+  });
+}
+
 export async function processWithdrawal(
   transactionId: string,
   decision: "approve" | "reject",
@@ -397,9 +419,18 @@ export async function processWithdrawal(
 
   const row = await prisma.transaction.findUnique({
     where: { id: transactionId },
-    include: { user: { select: { username: true } } },
+    include: {
+      user: {
+        select: { username: true, createdById: true, createdBy: { select: { id: true, role: true, username: true } } },
+      },
+    },
   });
   if (!row || row.type !== "WITHDRAWAL") return { ok: false, errorKey: "admin.withdrawals.error.notFound" };
+  // A manager reaches only their own players' requests; anyone else's is "not found".
+  if (actor.role === "manager" && row.user.createdById !== actor.id) {
+    return { ok: false, errorKey: "admin.withdrawals.error.notFound" };
+  }
+  const manager = row.user.createdBy?.role === "MANAGER" ? row.user.createdBy : null;
   if (row.status !== "PENDING") return { ok: false, errorKey: "admin.withdrawals.error.alreadyProcessed" };
 
   const merged = {
@@ -423,6 +454,34 @@ export async function processWithdrawal(
     if (claimed.count !== 1) return false;
 
     if (decision === "approve") {
+      // The credit returns to the manager who sold it.
+      if (manager) {
+        const back = -fromBig(row.amount);
+        await appendLedgerEntry(tx, {
+          userId: manager.id,
+          type: "CREDIT_TRANSFER",
+          amount: back,
+          description: "Credit returned by a player",
+          idempotencyKey: `withdraw-buyback:${row.id}`,
+          createdById: actor.id,
+          relatedId: row.id,
+          metadata: {
+            descriptionKey: "wallet.tx.creditBoughtBack",
+            player: row.user.username,
+            relatedReference: row.reference,
+          },
+        });
+        if (manager.id !== actor.id) {
+          await notifyUser(manager.id, {
+            tx,
+            kind: "credit",
+            titleKey: "notify.creditReceived.title",
+            bodyKey: "notify.creditReceived.body",
+            params: { amount: (back / 1000).toFixed(2) },
+            href: "/admin/transactions",
+          });
+        }
+      }
       await audit({
         tx,
         action: "admin.withdrawal.approved",
@@ -431,8 +490,8 @@ export async function processWithdrawal(
         targetType: "transaction",
         targetId: row.id,
         transactionId: row.id,
-        description: `Approved withdrawal ${row.reference} for ${row.user.username}`,
-        metadata: { amountMillimes: fromBig(row.amount), note: note ?? null },
+        description: `Approved withdrawal ${row.reference} for ${row.user.username}${manager ? `; credit returned to ${manager.username}` : ""}`,
+        metadata: { amountMillimes: fromBig(row.amount), note: note ?? null, creditReturnedTo: manager?.id ?? null },
       });
     } else {
       const description = describeEntry("REFUND");

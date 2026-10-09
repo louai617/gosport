@@ -369,7 +369,7 @@ export async function processWithdrawalAction(
     if (!parsed.success) return { ok: false, fieldErrors: zodFieldErrors(parsed.error) };
 
     const result = await processWithdrawal(parsed.data.id, parsed.data.decision, parsed.data.note);
-    return done(["/admin/wallet", "/admin/transactions", "/admin"], {
+    return done(["/admin/wallet", "/admin/withdrawals", "/admin/transactions", "/admin"], {
       ok: result.ok,
       messageKey: result.ok ? `admin.withdrawals.${parsed.data.decision}Done` : result.errorKey,
     });

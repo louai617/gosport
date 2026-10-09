@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BarChart3,
+  ArrowUpFromLine,
   Bell,
   HandCoins,
   LayoutDashboard,
@@ -37,6 +38,7 @@ const ITEMS: AdminNavItem[] = [
   { href: "/admin/managers", labelKey: "admin.nav.managers", icon: UserCog },
   { href: "/admin/players", labelKey: "admin.nav.players", icon: Users },
   { href: "/admin/transactions", labelKey: "admin.nav.transactions", icon: Receipt },
+  { href: "/admin/withdrawals", labelKey: "admin.nav.withdrawals", icon: ArrowUpFromLine },
   { href: "/admin/wallet", labelKey: "admin.nav.wallet", icon: HandCoins },
   { href: "/admin/bets", labelKey: "admin.nav.bets", icon: Wallet },
   { href: "/admin/reports", labelKey: "admin.nav.reports", icon: BarChart3 },
