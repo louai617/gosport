@@ -49,6 +49,8 @@ export type AuditAction =
   | "bet.voided"
   /* wallet */
   | "wallet.withdrawal_requested"
+  | "wallet.credit_requested"
+  | "wallet.credit_request_cancelled"
   /* responsible gambling */
   | "limit.created"
   | "limit.decreased"
@@ -70,6 +72,7 @@ export type AuditAction =
   | "admin.account.credentials_reset"
   | "admin.credit.issued"
   | "admin.credit.sold"
+  | "admin.credit.request_decided"
   | "admin.wallet.adjusted"
   | "admin.wallet.adjustment_requested"
   | "admin.wallet.adjustment_approved"

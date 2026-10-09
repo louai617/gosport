@@ -54,11 +54,14 @@ export async function ManagerHome() {
           value={formatNumber(summary.playerCount, locale)}
           hint={t("admin.manager.activePlayers", { count: summary.activePlayers })}
         />
-        <StatTile
-          label={t("admin.manager.sales")}
-          value={formatNumber(summary.soldCount, locale)}
-          hint={t("admin.metric.lifetime")}
-        />
+        <Link href="/admin/credit-requests" className="block">
+          <StatTile
+            label={t("admin.creditRequests.title")}
+            value={formatNumber(summary.pendingRequests, locale)}
+            tone={summary.pendingRequests > 0 ? "warning" : "default"}
+            hint={t("admin.manager.salesHint", { count: summary.soldCount })}
+          />
+        </Link>
       </div>
 
       <section aria-labelledby="recent" className="space-y-2">

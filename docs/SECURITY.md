@@ -105,6 +105,13 @@ player's `DEPOSIT` credit, linked by `relatedId`) in one database transaction, i
 on a client key, subject to the player's own deposit limits, and audited. A manager can
 never sell more than they hold, however many requests race.
 
+A player can **ask** for credit (`CreditRequest`, from the Deposit page). Asking moves nothing and
+is addressed to the manager who created the player; at most three requests wait at once, and the
+player can cancel a pending one. The manager's approval *is* a sale — the same guarded transaction
+as above, so an oversized request is refused and the claim rolled back — and only requests
+addressed to that manager are visible to them. The superadmin has no balance to sell from and cannot
+decide them.
+
 The chain runs back up on a withdrawal: when a request is **approved**, the player's held funds
 leave the platform and the same amount returns to the player's manager as a `CREDIT_TRANSFER`
 credit (so credit a manager sold is never silently destroyed); **rejecting** returns the funds to

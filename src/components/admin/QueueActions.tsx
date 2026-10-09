@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { decideAdjustmentAction, processWithdrawalAction } from "@/app/actions/admin";
+import { decideAdjustmentAction, decideCreditRequestAction, processWithdrawalAction } from "@/app/actions/admin";
 import { emptyActionState } from "@/lib/actionState";
 import { useT } from "@/i18n/I18nProvider";
 import { Button } from "@/components/ui/Button";
@@ -11,9 +11,10 @@ import { Button } from "@/components/ui/Button";
  * claims the row with a conditional update, so two clicks (or two operators)
  * process it once.
  */
-export function DecisionButtons({ id, kind }: { id: string; kind: "withdrawal" | "adjustment" }) {
+export function DecisionButtons({ id, kind }: { id: string; kind: "withdrawal" | "adjustment" | "credit" }) {
   const t = useT();
-  const action = kind === "withdrawal" ? processWithdrawalAction : decideAdjustmentAction;
+  const action =
+    kind === "withdrawal" ? processWithdrawalAction : kind === "credit" ? decideCreditRequestAction : decideAdjustmentAction;
   const [state, formAction, pending] = useActionState(action, emptyActionState);
 
   if (state.ok) {

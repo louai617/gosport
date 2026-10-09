@@ -788,6 +788,69 @@ const mgrB = await provisionStaff("mb", "MANAGER");
   const mgrBalancesAfter = (await prisma.wallet.aggregate({ where: { user: { role: "MANAGER" } }, _sum: { balance: true } }))._sum.balance;
   check("a player with no manager (created by the superadmin): approving credits nobody", mgrBalancesBefore === mgrBalancesAfter && (await prisma.transaction.count({ where: { type: "CREDIT_TRANSFER", relatedId: wd4.id } })) === 0);
 
+  /* ---- credit requests: the player asks, the manager decides ----------------------------------- */
+  const crBefore = { m: (await ledgerSum(mId)).balance, p: (await ledgerSum(w.id)).balance };
+  const ask = await w.client.post("/api/credit-requests", { amount: 30, note: "paid in cash" });
+  check("a player asks their manager for credit (201)", ask.status === 201, JSON.stringify(ask.error));
+  const reqId = ask.data.id as string;
+  check("asking moves nothing", (await ledgerSum(mId)).balance === crBefore.m && (await ledgerSum(w.id)).balance === crBefore.p);
+  const mAsked = await M.get("/api/notifications");
+  check("the manager is notified of the request", mAsked.data.some((n: any) => n.kind === "credit_request"));
+  const mine = await w.client.get("/api/credit-requests");
+  check("the player sees it, pending", mine.status === 200 && mine.data.some((r: any) => r.id === reqId && r.status === "pending"));
+  const crQueue = await M.get("/api/admin/credit-requests");
+  check("it is in the manager's queue", crQueue.status === 200 && crQueue.data.pending.some((r: any) => r.id === reqId && r.amount === 30));
+  const crQueueB = await MB.get("/api/admin/credit-requests");
+  check("…and in nobody else's", crQueueB.status === 200 && !crQueueB.data.pending.some((r: any) => r.id === reqId));
+  const foreignCr = await MB.post(`/api/admin/credit-requests/${reqId}`, { decision: "approve" });
+  check("another manager cannot decide it", foreignCr.status === 422 && foreignCr.error?.messageKey === "credit.request.notFound", `${foreignCr.status} ${foreignCr.error?.messageKey}`);
+  check("a player cannot decide it (403)", (await w.client.post(`/api/admin/credit-requests/${reqId}`, { decision: "approve" })).status === 403);
+  check("the superadmin has no balance to sell from: the decision endpoint refuses them (403)", (await admin.post(`/api/admin/credit-requests/${reqId}`, { decision: "approve" })).status === 403);
+
+  const crNone = await own.client.post("/api/credit-requests", { amount: 10 });
+  check("a player with no manager has nobody to ask", crNone.status === 422 && crNone.error?.messageKey === "credit.request.noManager", `${crNone.status} ${crNone.error?.messageKey}`);
+
+  const q = await onboard(M);
+  const zero = await q.client.post("/api/credit-requests", { amount: 0 });
+  const neg = await q.client.post("/api/credit-requests", { amount: -5 });
+  check("a zero or negative amount is refused", zero.status === 422 && neg.status === 422);
+  const qa = await q.client.post("/api/credit-requests", { amount: 5 });
+  await q.client.post("/api/credit-requests", { amount: 5 });
+  await q.client.post("/api/credit-requests", { amount: 5 });
+  const fourth = await q.client.post("/api/credit-requests", { amount: 5 });
+  check("at most three requests wait at once", qa.status === 201 && fourth.status === 422 && fourth.error?.messageKey === "credit.request.tooMany", `${fourth.status} ${fourth.error?.messageKey}`);
+  const cancelled = await q.client.post(`/api/credit-requests/${qa.data.id}/cancel`, {});
+  check("a player cancels a pending request", cancelled.status === 200 && (await prisma.creditRequest.findUnique({ where: { id: qa.data.id } }))!.status === "CANCELLED");
+  check("…once only", (await q.client.post(`/api/credit-requests/${qa.data.id}/cancel`, {})).status === 422);
+  check("…and nobody can cancel someone else's", (await own.client.post(`/api/credit-requests/${reqId}/cancel`, {})).status === 422 && (await prisma.creditRequest.findUnique({ where: { id: reqId } }))!.status === "PENDING");
+  const cancelledDecision = await M.post(`/api/admin/credit-requests/${qa.data.id}`, { decision: "approve" });
+  check("a cancelled request can no longer be approved", cancelledDecision.status === 422 && cancelledDecision.error?.messageKey === "credit.request.notPending");
+
+  const huge = await w.client.post("/api/credit-requests", { amount: 4_000 });
+  const hugeDecision = await M.post(`/api/admin/credit-requests/${huge.data.id}`, { decision: "approve" });
+  check("approving more than the manager holds is refused…", hugeDecision.status === 422 && hugeDecision.error?.messageKey === "credit.error.insufficientBalance", `${hugeDecision.status} ${hugeDecision.error?.messageKey}`);
+  check("…and the request stays pending, with nothing moved", (await prisma.creditRequest.findUnique({ where: { id: huge.data.id } }))!.status === "PENDING" && (await ledgerSum(mId)).balance === crBefore.m);
+  await M.post(`/api/admin/credit-requests/${huge.data.id}`, { decision: "reject", note: "too much" });
+
+  const approvedCr = await M.post(`/api/admin/credit-requests/${reqId}`, { decision: "approve", note: "thanks" });
+  check("the manager approves the request", approvedCr.status === 200, JSON.stringify(approvedCr.error));
+  const crAfter = { m: await ledgerSum(mId), p: await ledgerSum(w.id) };
+  check("30 moved from the manager to the player, and both ledgers reconcile", crAfter.m.balance === crBefore.m - 30 && crAfter.p.balance === crBefore.p + 30 && crAfter.m.sum === crAfter.m.balance && crAfter.p.sum === crAfter.p.balance, `${JSON.stringify(crBefore)} → ${crAfter.m.balance}/${crAfter.p.balance}`);
+  const crRow = await prisma.creditRequest.findUnique({ where: { id: reqId } });
+  const crDeposit = crRow?.transactionId ? await prisma.transaction.findUnique({ where: { id: crRow.transactionId } }) : null;
+  check("the request records the player's deposit entry", crRow?.status === "APPROVED" && crDeposit?.type === "DEPOSIT" && crDeposit.userId === w.id && crDeposit.amount === 30_000n);
+  check("approving twice cannot sell twice", (await M.post(`/api/admin/credit-requests/${reqId}`, { decision: "approve" })).status === 422 && (await ledgerSum(mId)).balance === crAfter.m.balance);
+
+  const rejectedAsk = await w.client.post("/api/credit-requests", { amount: 10 });
+  const rejectedCr = await M.post(`/api/admin/credit-requests/${rejectedAsk.data.id}`, { decision: "reject", note: "not now" });
+  const wNotes = await w.client.get("/api/notifications");
+  check("rejecting moves nothing and tells the player", rejectedCr.status === 200 && (await ledgerSum(w.id)).balance === crAfter.p.balance && wNotes.data.some((n: any) => n.titleKey === "notify.creditRequestRejected.title"));
+  const history = await M.get("/api/admin/credit-requests");
+  check("the manager's history shows what was decided", history.data.recent.some((r: any) => r.id === reqId && r.status === "approved") && history.data.recent.some((r: any) => r.id === rejectedAsk.data.id && r.status === "rejected"));
+  const decided = await prisma.auditLog.count({ where: { action: "admin.credit.request_decided", actorId: mId } });
+  const asked = await prisma.auditLog.count({ where: { action: "wallet.credit_requested", actorId: w.id } });
+  check("requests and decisions are audited", decided >= 3 && asked >= 3, `decided=${decided} asked=${asked}`);
+
   /* ---- audit ---------------------------------------------------------------------------------- */
   const audits = await prisma.auditLog.findMany({ where: { action: { in: ["admin.manager.created", "admin.player.created", "admin.credit.issued", "admin.credit.sold", "admin.account.credentials_reset"] } } });
   const kinds = new Set(audits.map((a) => a.action));
@@ -802,7 +865,7 @@ const mgrB = await provisionStaff("mb", "MANAGER");
   check("the manager is notified of credit they receive", mNotes.status === 200 && mNotes.data.some((n: any) => n.kind === "credit"));
 
   /* ---- pages ---------------------------------------------------------------------------------- */
-  const managerPages = ["/admin", "/admin/players", "/admin/players/new", `/admin/players/${p1Id}`, `/admin/players/${p1Id}?tab=wallet`, `/admin/players/${p1Id}?tab=transactions`, "/admin/transactions", "/admin/withdrawals", "/admin/notifications", "/admin/security"];
+  const managerPages = ["/admin", "/admin/players", "/admin/players/new", `/admin/players/${p1Id}`, `/admin/players/${p1Id}?tab=wallet`, `/admin/players/${p1Id}?tab=transactions`, "/admin/transactions", "/admin/withdrawals", "/admin/credit-requests", "/admin/notifications", "/admin/security"];
   const bad: string[] = [];
   for (const path of managerPages) {
     const status = await pageStatus(M, path);

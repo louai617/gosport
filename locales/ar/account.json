@@ -124,5 +124,9 @@
   "notify.creditReceived.title": "تم استلام رصيد",
   "notify.creditReceived.body": "أُضيف رصيد قدره {amount} دينار إلى رصيدك.",
   "notify.creditFromManager.title": "تمت إضافة رصيد",
-  "notify.creditFromManager.body": "أضاف مديرك {amount} دينار إلى رصيدك."
+  "notify.creditFromManager.body": "أضاف مديرك {amount} دينار إلى رصيدك.",
+  "notify.creditRequest.title": "طلب رصيد",
+  "notify.creditRequest.body": "{username} يطلب رصيدًا قدره {amount} دينار.",
+  "notify.creditRequestRejected.title": "تم رفض طلب الرصيد",
+  "notify.creditRequestRejected.body": "لم يوافق مديرك على طلبك بمبلغ {amount} دينار."
 }

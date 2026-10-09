@@ -151,6 +151,13 @@ enum AuditOutcome {
   BLOCKED
 }
 
+enum CreditRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
 enum ApprovalStatus {
   PENDING
   APPROVED
@@ -199,6 +206,8 @@ model User {
   favorites     Favorite[]
   fairnessSeeds FairnessSeed[]
   adjustmentRequests AdjustmentRequest[] @relation("AdjustmentSubject")
+  creditRequests         CreditRequest[] @relation("CreditRequestPlayer")
+  creditRequestsReceived CreditRequest[] @relation("CreditRequestManager")
   auditAsActor  AuditLog[] @relation("AuditActor")
   auditAsTarget AuditLog[] @relation("AuditTarget")
 
@@ -373,6 +382,31 @@ model AdjustmentRequest {
 /// A sportsbook ticket or a casino round. Casino rounds that span several
 /// requests (blackjack, mines, crash) keep their private game state in `state`,
 /// which is never serialised to a client.
+/// A player asking their manager for credit. The manager approves (which sells the
+/// credit out of their own balance, exactly like a sale they start themselves) or
+/// rejects; the player may cancel while it is pending. Nothing moves until approval.
+model CreditRequest {
+  id            String              @id @default(cuid())
+  playerId      String
+  /// The manager the request is addressed to: the player's `createdById` at request time.
+  managerId     String
+  amount        BigInt
+  note          String?
+  status        CreditRequestStatus @default(PENDING)
+  createdAt     DateTime            @default(now())
+  decidedAt     DateTime?
+  decidedById   String?
+  decisionNote  String?
+  /// The player's DEPOSIT entry, once approved.
+  transactionId String?
+
+  player  User @relation("CreditRequestPlayer", fields: [playerId], references: [id], onDelete: Restrict)
+  manager User @relation("CreditRequestManager", fields: [managerId], references: [id], onDelete: Restrict)
+
+  @@index([managerId, status, createdAt])
+  @@index([playerId, createdAt])
+}
+
 model Bet {
   id             String    @id @default(cuid())
   reference      String    @unique

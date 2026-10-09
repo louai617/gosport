@@ -47,7 +47,7 @@ function newKey(): string {
 }
 
 /** Amount limits shared by both directions. */
-async function amountError(amount: number, tx: Tx | typeof prisma = prisma): Promise<string | null> {
+export async function amountError(amount: number, tx: Tx | typeof prisma = prisma): Promise<string | null> {
   const [min, max] = await Promise.all([
     getSetting("wallet.minTransactionAmount", tx),
     getSetting("wallet.maxTransactionAmount", tx),
@@ -252,6 +252,8 @@ export interface ManagerSummary {
   sold: number;
   soldToday: number;
   soldCount: number;
+  /** Credit requests from their players still waiting for a decision. */
+  pendingRequests: number;
 }
 
 /** The manager's own book: balance, players, and what they have sold. */
@@ -259,7 +261,7 @@ export async function getManagerSummary(): Promise<ManagerSummary> {
   const actor = await requirePermission("credit.distribute");
   const since = new Date(Date.now() - 24 * 3600 * 1000);
 
-  const [wallet, playerCount, activePlayers, sold, soldToday] = await Promise.all([
+  const [wallet, playerCount, activePlayers, sold, soldToday, pendingRequests] = await Promise.all([
     prisma.wallet.findUnique({ where: { userId: actor.id }, select: { balance: true } }),
     prisma.user.count({ where: managedPlayerWhere(actor) }),
     prisma.user.count({ where: { ...managedPlayerWhere(actor), status: "ACTIVE" } }),
@@ -272,6 +274,7 @@ export async function getManagerSummary(): Promise<ManagerSummary> {
       where: { userId: actor.id, type: "CREDIT_TRANSFER", amount: { lt: 0n }, createdAt: { gte: since } },
       _sum: { amount: true },
     }),
+    prisma.creditRequest.count({ where: { managerId: actor.id, status: "PENDING" } }),
   ]);
 
   return {
@@ -281,5 +284,6 @@ export async function getManagerSummary(): Promise<ManagerSummary> {
     sold: Math.abs(fromBig(sold._sum.amount)) / 1000,
     soldToday: Math.abs(fromBig(soldToday._sum.amount)) / 1000,
     soldCount: sold._count,
+    pendingRequests,
   };
 }

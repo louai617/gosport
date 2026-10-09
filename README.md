@@ -42,7 +42,7 @@ casino games (dice, limbo, crash, mines, plinko, slots, blackjack, roulette) tha
 are **settled on the server** from a seed they can verify — picked from a lobby
 they can filter, search and sort (most played first) — request withdrawals, set
 deposit / stake / loss / single-bet limits, take a break or self-exclude, and
-manage their sessions.
+ask their manager for credit from the **Deposit** page (the manager approves, which sells it from their own balance), and manage their sessions.
 
 **The superadmin** has the full console at `/admin`: a dashboard with period
 filters and charts, managers (create, issue credit, generate a new password,
@@ -53,7 +53,7 @@ settings and responsible-gambling oversight.
 
 **A manager** has a small console scoped to their own book: their balance, the
 players they created (create, generate a new password, suspend, sell credit, decide withdrawals) and
-their own transactions — and **they accept or reject their players' withdrawal requests**
+their own transactions — and **they approve or reject their players' credit requests and withdrawal requests**
 (the cashed-out credit returns to the manager's balance). A manager cannot see another manager's players, the audit
 log or any platform setting — the services enforce that, not just the menu.
 
@@ -83,7 +83,7 @@ Full setup, scripts and the Vercel / PostgreSQL deployment steps are in
 | `npm run dev` / `build` / `start` | Development server / production build / serve it |
 | `npm run typecheck` · `lint` | `tsc --noEmit` · ESLint |
 | `npm run test:unit` | Settlement, period, CSV and fairness tests |
-| `npm run test:integration` | 273 end-to-end checks against a running server (auth, RBAC, manager scoping, the credit chain, ledger, concurrency, withdrawals, casino, pages, audit) |
+| `npm run test:integration` | 298 end-to-end checks against a running server (auth, RBAC, manager scoping, the credit chain, ledger, concurrency, withdrawals, casino, pages, audit) |
 | `npm run verify` | Typecheck → client-boundary check → i18n audit → unit tests → production build |
 | `npm run db:deploy` · `db:migrate` · `db:seed` · `db:studio` | Migrations, seed, data browser |
 | `npm run admin:recovery-link -- <username>` | Break-glass single-use reset link for the superadmin |

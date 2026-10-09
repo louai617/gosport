@@ -141,6 +141,21 @@ export const creditSchema = z.object({
 
 export type CreditInput = z.infer<typeof creditSchema>;
 
+/** A player asking their manager for credit. */
+export const creditRequestSchema = z.object({
+  amount: amountSchema,
+  note: freeText(0, 200, "admin.validation.reasonRequired").optional(),
+  idempotencyKey,
+});
+
+export type CreditRequestInput = z.infer<typeof creditRequestSchema>;
+
+export const decideCreditRequestSchema = z.object({
+  id: idSchema,
+  decision: z.enum(["approve", "reject"]),
+  note: freeText(0, 200, "admin.validation.reasonRequired").optional(),
+});
+
 export const resetCredentialsSchema = z.object({
   accountId: idSchema,
   confirm: z.literal(true, { message: "admin.validation.confirmRequired" }),

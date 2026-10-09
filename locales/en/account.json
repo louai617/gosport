@@ -124,5 +124,9 @@
   "notify.creditReceived.title": "Credit received",
   "notify.creditReceived.body": "{amount} TND of credit was added to your balance.",
   "notify.creditFromManager.title": "Credit added",
-  "notify.creditFromManager.body": "Your manager added {amount} TND to your balance."
+  "notify.creditFromManager.body": "Your manager added {amount} TND to your balance.",
+  "notify.creditRequest.title": "Credit request",
+  "notify.creditRequest.body": "{username} is asking for {amount} TND of credit.",
+  "notify.creditRequestRejected.title": "Credit request declined",
+  "notify.creditRequestRejected.body": "Your manager did not approve your request for {amount} TND."
 }

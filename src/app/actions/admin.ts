@@ -8,6 +8,7 @@ import {
   createManagerSchema,
   createPlayerSchema,
   creditSchema,
+  decideCreditRequestSchema,
   decisionSchema,
   playerActionSchema,
   resetCredentialsSchema,
@@ -18,6 +19,7 @@ import {
 import { guarded, readBoolean, text, zodFieldErrors } from "@/server/actions";
 import { updateSettings } from "@/server/settings/settingsService";
 import { createManagerAccount, createPlayerAccount, resetCredentials } from "@/services/accountService";
+import { decideCreditRequest } from "@/services/creditRequestService";
 import { issueCreditToManager, sellCreditToPlayer } from "@/services/creditService";
 import {
   changeStatus,
@@ -449,4 +451,25 @@ export async function adminSearchAction(query: string): Promise<AdminSearchState
   } catch {
     return { ok: false, results: [] };
   }
+}
+
+/** A manager approves (sells the credit) or rejects a player's request. */
+export async function decideCreditRequestAction(
+  _previous: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  return guarded("admin.decideCreditRequest", async () => {
+    const parsed = decideCreditRequestSchema.safeParse({
+      id: text(formData, "id"),
+      decision: text(formData, "decision"),
+      note: text(formData, "note") || undefined,
+    });
+    if (!parsed.success) return { ok: false, fieldErrors: zodFieldErrors(parsed.error) };
+
+    const result = await decideCreditRequest(parsed.data.id, parsed.data.decision, parsed.data.note);
+    return done(["/admin/credit-requests", "/admin/players", "/admin/transactions", "/admin"], {
+      ok: result.ok,
+      messageKey: result.ok ? `admin.creditRequests.${parsed.data.decision}Done` : result.errorKey,
+    });
+  });
 }

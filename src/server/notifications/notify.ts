@@ -28,7 +28,8 @@ export type NotificationKind =
   | "security"
   | "admin_action"
   | "match_starting"
-  | "credit";
+  | "credit"
+  | "credit_request";
 
 export interface NotificationInput {
   kind: NotificationKind;

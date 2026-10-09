@@ -1,9 +1,13 @@
 "use server";
 
 import type { ActionState } from "@/lib/actionState";
+import { revalidatePath } from "next/cache";
+
+import { creditRequestSchema } from "@/lib/adminValidation";
 import { depositSchema, withdrawalSchema } from "@/lib/validation";
 import { guarded, limitAction, readBoolean, text, zodFieldErrors } from "@/server/actions";
 import { getSessionUser } from "@/server/auth/guard";
+import { cancelCreditRequest, requestCredit } from "@/services/creditRequestService";
 import { createDeposit, createWithdrawal } from "@/services/paymentService";
 
 /**
@@ -54,5 +58,40 @@ export async function withdrawAction(
     return result.ok
       ? { ok: true, messageKey: "wallet.withdrawRequested", data: { reference: result.intentId } }
       : { ok: false, messageKey: result.errorKey ?? "common.error.unexpected" };
+  });
+}
+
+/** The player asks their manager for credit. Nothing moves until the manager approves. */
+export async function requestCreditAction(
+  _previous: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  return guarded("wallet.requestCredit", async () => {
+    const parsed = creditRequestSchema.safeParse({
+      amount: text(formData, "amount"),
+      note: text(formData, "note") || undefined,
+    });
+    if (!parsed.success) return { ok: false, fieldErrors: zodFieldErrors(parsed.error) };
+
+    const limited = await limitAction("deposit", (await getSessionUser())?.id);
+    if (limited) return limited;
+
+    const result = await requestCredit(parsed.data);
+    if (!result.ok) {
+      return { ok: false, messageKey: result.errorKey, fieldErrors: result.fieldErrors };
+    }
+    revalidatePath("/wallet/deposit");
+    return { ok: true, messageKey: "wallet.creditRequest.sent" };
+  });
+}
+
+export async function cancelCreditRequestAction(
+  _previous: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  return guarded("wallet.cancelCreditRequest", async () => {
+    const result = await cancelCreditRequest(text(formData, "id"));
+    if (result.ok) revalidatePath("/wallet/deposit");
+    return { ok: result.ok, messageKey: result.ok ? "wallet.creditRequest.cancelled" : result.errorKey };
   });
 }

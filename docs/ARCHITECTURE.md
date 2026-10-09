@@ -72,6 +72,7 @@ atomic debit, idempotent replay, and the audit row in the same transaction.
 | Flow | How it works |
 |---|---|
 | Issue credit | The superadmin credits a manager: one `ADMIN_CREDIT` entry (the only place credit is created). |
+| Request credit | A player asks their manager (Deposit page): a `CreditRequest`, nothing moves. The manager approves — which *is* a sale, below — or rejects; the player can cancel while pending. |
 | Sell credit | A manager sells to a player they created: a `CREDIT_TRANSFER` debit on the manager and a `DEPOSIT` credit on the player (linked by `relatedId`), one transaction, idempotent, subject to the player's deposit limits. The guarded debit means a manager cannot sell more than they hold. |
 | Manual adjustment | The superadmin can still record a credit or debit on a player with a reason; above `wallet.adjustmentApprovalThreshold` it becomes an `AdjustmentRequest` a *second* superadmin must approve. |
 | Withdrawal | The player requests → a `PENDING` `WITHDRAWAL` entry **holds** the funds, and the player's manager (and the superadmin) is notified. The manager — or the superadmin — approves once the player has been paid out of band (→ `COMPLETED`; the amount returns to the player's manager as a `CREDIT_TRANSFER` credit) or rejects (→ `REVERSED` plus a `REFUND` entry referencing the original). A conditional claim prevents double processing; a manager reaches only their own players' requests. |
@@ -126,6 +127,7 @@ The menu, the pages and the services are all filtered by role; the services are 
 |---|---|---|
 | Home | `/admin` | Balance (also pinned in the header), credit sold, players, recent movements |
 | Players | `/admin/players`, `/new`, `/[id]` | Only players they created; create (generated credentials, optional opening credit sold from their balance), sell credit, generate a new password, suspend/reactivate |
+| Credit requests | `/admin/credit-requests` | Players asking them for credit: approve (sells it from their balance) or reject |
 | Withdrawals | `/admin/withdrawals` | Their players' pending requests: approve (credit returns to their balance) or reject |
 | Transactions | `/admin/transactions` | Their own wallet's movements and their players' |
 | Notifications, Security | … | Their own |
@@ -139,7 +141,7 @@ Credentials are shown by `CredentialsReveal` — read-only, copyable, with a "sh
 
 `/account` (overview, bets, transactions, profile, security with active sessions,
 responsible-gambling limits, notifications) and `/wallet` (balance, history,
-withdraw; deposit explains that credit is bought from the player's manager). The games lobby
+withdraw; deposit is where a player asks their manager for credit and follows the request). The games lobby
 (`/games`) is one filter bar — search, category, playable-only, sort — above a single grid of
 every game, **most played first** (real round counts from the ledger). The header's
 balance comes from `WalletProvider`, which every casino board shares so one round's

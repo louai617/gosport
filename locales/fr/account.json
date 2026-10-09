@@ -124,5 +124,9 @@
   "notify.creditReceived.title": "Crédit reçu",
   "notify.creditReceived.body": "{amount} TND de crédit ont été ajoutés à votre solde.",
   "notify.creditFromManager.title": "Crédit ajouté",
-  "notify.creditFromManager.body": "Votre gestionnaire a ajouté {amount} TND à votre solde."
+  "notify.creditFromManager.body": "Votre gestionnaire a ajouté {amount} TND à votre solde.",
+  "notify.creditRequest.title": "Demande de crédit",
+  "notify.creditRequest.body": "{username} demande {amount} TND de crédit.",
+  "notify.creditRequestRejected.title": "Demande de crédit refusée",
+  "notify.creditRequestRejected.body": "Votre gestionnaire n’a pas approuvé votre demande de {amount} TND."
 }

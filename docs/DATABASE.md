@@ -45,6 +45,7 @@ Vercel** (read-only, ephemeral filesystem would silently lose every account).
 | `Wallet` | One per user; `balance` in millimes, CHECK ≥ 0. |
 | `Transaction` | The append-only ledger: `type` (incl. `CREDIT_TRANSFER`, a manager's side of selling credit; the player's side is a `DEPOSIT`), `status`, `amount`, `balanceBefore`/`balanceAfter`, `reference`, `idempotencyKey`, `betId`, `relatedId`, `createdById`. |
 | `AdjustmentRequest` | Four-eyes approval queue for balance adjustments above the configured threshold. |
+| `CreditRequest` | A player asking their manager for credit: amount, note, `status` (`PENDING` / `APPROVED` / `REJECTED` / `CANCELLED`), the deciding manager and, once approved, the player's `DEPOSIT` entry. Asking moves nothing. |
 | `Bet` | A sportsbook ticket (`kind = SPORTS`) or a casino round (`kind = CASINO`, `gameKey`, `state`, `result` proof, optimistic-lock `version`). |
 | `BetLeg` | Snapshot of each sportsbook selection at placement (event, market, label, price in milli-odds) — settlement never depends on the live dataset. |
 | `FairnessSeed` | Per-player committed server seed (+ hash), client seed and nonce for casino rounds; revealed on rotation. |
@@ -105,8 +106,8 @@ Migrations are engine-specific SQL, so they live in separate folders and
 `prisma.config.ts` picks the one that matches `DATABASE_URL`:
 
 ```
-prisma/migrations/sqlite/      20261007145255_init, 20261007150000_integrity_guards, 20261008151318_managers_and_roles
-prisma/migrations/postgresql/  20261007145255_init, 20261007150000_integrity_guards
+prisma/migrations/sqlite/      20261007145255_init, 20261007150000_integrity_guards, 20261008151318_managers_and_roles, 20261009105837_credit_requests
+prisma/migrations/postgresql/  20261007145255_init, 20261007150000_integrity_guards, 20261008151318_managers_and_roles, 20261009105837_credit_requests
 ```
 
 When you change the schema, generate and review a migration **for both engines**
@@ -131,7 +132,7 @@ and the generated client open).
 
 ## Verification status
 
-The full integration suite (273 checks: auth, RBAC, manager scoping, the credit chain,
+The full integration suite (298 checks: auth, RBAC, manager scoping, the credit chain,
 ledger, concurrency, withdrawals, four-eyes, casino rounds, page protection, audit, reports) passes
 against SQLite on both the dev server and a production build, and against
 PostgreSQL **using Prisma's embedded server (`prisma dev`, PGlite) with a

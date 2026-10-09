@@ -34,6 +34,7 @@ const NAV_PERMISSIONS: ReadonlyArray<readonly [string, Permission]> = [
   ["/admin/managers", "managers.read"],
   ["/admin/players", "players.read"],
   ["/admin/transactions", "transactions.read"],
+  ["/admin/credit-requests", "credit.distribute"],
   ["/admin/withdrawals", "withdrawals.process"],
   ["/admin/wallet", "wallet.read"],
   ["/admin/bets", "bets.read"],
